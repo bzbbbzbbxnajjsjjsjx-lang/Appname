@@ -34,6 +34,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.androidapp.vardiya.domain.model.SalaryConfiguration
+import com.example.androidapp.vardiya.domain.validator.SalaryConfigValidator
+import com.example.androidapp.vardiya.domain.validator.SalaryValidationResult
 import java.math.BigDecimal
 import java.math.RoundingMode
 import java.text.DecimalFormat
@@ -52,22 +54,30 @@ fun VardiyaSetupDialog(
     var breakMinutesText by remember { mutableStateOf(initialConfig.breakMinutes.toString()) }
     var deductBreak by remember { mutableStateOf(initialConfig.deductBreakFromSalary) }
 
-    // Live preview computation
-    val previewConfig = remember(salaryText, workDaysText, workHoursText, breakMinutesText, deductBreak) {
-        try {
-            val salary = BigDecimal(salaryText.replace(",", ".").trim()).coerceAtLeast(BigDecimal("1"))
-            val days = workDaysText.trim().toIntOrNull()?.coerceAtLeast(1) ?: 22
-            val hours = BigDecimal(workHoursText.replace(",", ".").trim()).coerceAtLeast(BigDecimal("0.5"))
-            val breakMin = breakMinutesText.trim().toIntOrNull()?.coerceAtLeast(0) ?: 0
-            SalaryConfiguration(
-                monthlySalary = salary,
-                monthlyWorkDays = days,
-                dailyWorkHours = hours,
-                breakMinutes = breakMin,
-                deductBreakFromSalary = deductBreak,
-                currencySymbol = initialConfig.currencySymbol
+    val validationResult = remember(salaryText, workDaysText, workHoursText, breakMinutesText, deductBreak) {
+        SalaryConfigValidator.validate(
+            salaryText = salaryText,
+            workDaysText = workDaysText,
+            workHoursText = workHoursText,
+            breakMinutesText = breakMinutesText,
+            deductBreak = deductBreak,
+            currencySymbol = initialConfig.currencySymbol,
+            currencyCode = initialConfig.currencyCode
+        )
+    }
+
+    val previewConfig = remember(validationResult, salaryText, workDaysText, workHoursText, breakMinutesText, deductBreak) {
+        if (validationResult is SalaryValidationResult.Valid) {
+            SalaryConfigValidator.parseOrNull(
+                salaryText = salaryText,
+                workDaysText = workDaysText,
+                workHoursText = workHoursText,
+                breakMinutesText = breakMinutesText,
+                deductBreak = deductBreak,
+                currencySymbol = initialConfig.currencySymbol,
+                currencyCode = initialConfig.currencyCode
             )
-        } catch (e: Exception) {
+        } else {
             null
         }
     }
@@ -97,12 +107,32 @@ fun VardiyaSetupDialog(
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
+                // Validation error banner if any
+                if (validationResult is SalaryValidationResult.Invalid) {
+                    Card(
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.errorContainer
+                        ),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = validationResult.errorMessage,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            modifier = Modifier.padding(12.dp)
+                        )
+                    }
+                }
+
                 OutlinedTextField(
                     value = salaryText,
                     onValueChange = { salaryText = it },
                     label = { Text("Aylık Maaş (${initialConfig.currencySymbol})") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     singleLine = true,
+                    isError = validationResult is SalaryValidationResult.Invalid &&
+                            validationResult.field == SalaryValidationResult.Field.SALARY,
                     modifier = Modifier
                         .fillMaxWidth()
                         .semantics { contentDescription = "Aylık maaş tutarı" }
@@ -114,6 +144,8 @@ fun VardiyaSetupDialog(
                     label = { Text("Ayda kaç gün çalışıyorsun?") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     singleLine = true,
+                    isError = validationResult is SalaryValidationResult.Invalid &&
+                            validationResult.field == SalaryValidationResult.Field.WORK_DAYS,
                     modifier = Modifier
                         .fillMaxWidth()
                         .semantics { contentDescription = "Aylık çalışma gün sayısı" }
@@ -125,6 +157,8 @@ fun VardiyaSetupDialog(
                     label = { Text("Günde kaç saat çalışıyorsun?") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     singleLine = true,
+                    isError = validationResult is SalaryValidationResult.Invalid &&
+                            validationResult.field == SalaryValidationResult.Field.WORK_HOURS,
                     modifier = Modifier
                         .fillMaxWidth()
                         .semantics { contentDescription = "Günlük çalışma saat süresi" }
@@ -136,6 +170,8 @@ fun VardiyaSetupDialog(
                     label = { Text("Mola süresi (dakika)") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     singleLine = true,
+                    isError = validationResult is SalaryValidationResult.Invalid &&
+                            validationResult.field == SalaryValidationResult.Field.BREAK_MINUTES,
                     modifier = Modifier
                         .fillMaxWidth()
                         .semantics { contentDescription = "Günlük mola süresi dakika" }
@@ -150,43 +186,61 @@ fun VardiyaSetupDialog(
                     Checkbox(
                         checked = deductBreak,
                         onCheckedChange = { deductBreak = it },
-                        modifier = Modifier.semantics { contentDescription = "Mola çalışma süresinden düşülsün seçeneği" }
+                        modifier = Modifier.semantics {
+                            contentDescription = "Mola maaştan düşülsün mü seçeneği"
+                        }
                     )
                     Text(
-                        text = "Mola süresi çalışma saatinden düşülsün",
+                        text = "Mola süresi ücretten kesilsin (ödenmeyen mola)",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurface
                     )
                 }
 
-                // Live rate preview card
+                // Live Preview Card
                 if (previewConfig != null) {
-                    Spacer(modifier = Modifier.height(4.dp))
                     Card(
                         colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+                            containerColor = MaterialTheme.colorScheme.secondaryContainer
                         ),
                         shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp)
                     ) {
-                        Column(modifier = Modifier.padding(12.dp)) {
+                        Column(
+                            modifier = Modifier.padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
                             Text(
-                                text = "Hesaplanan Ücret:",
+                                text = "Önizleme Oranları:",
                                 style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                text = "Saatlik: ${rateFormat.format(previewConfig.hourlyRate.setScale(2, RoundingMode.HALF_UP))} ${previewConfig.currencySymbol}",
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.primary
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer
                             )
                             Text(
-                                text = "Saniyelik: ${secondRateFormat.format(previewConfig.secondRate.setScale(5, RoundingMode.HALF_UP))} ${previewConfig.currencySymbol}",
+                                text = "Saatlik: ${previewConfig.currencySymbol}${rateFormat.format(previewConfig.hourlyRate.setScale(2, RoundingMode.HALF_UP))}",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = MaterialTheme.colorScheme.onSecondaryContainer
                             )
+                            Text(
+                                text = "Dakikalık: ${previewConfig.currencySymbol}${rateFormat.format(previewConfig.minuteRate.setScale(4, RoundingMode.HALF_UP))}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer
+                            )
+                            Text(
+                                text = "Saniyelik: ${previewConfig.currencySymbol}${secondRateFormat.format(previewConfig.secondRate.setScale(5, RoundingMode.HALF_UP))}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer
+                            )
+                            if (deductBreak) {
+                                Text(
+                                    text = "Ücretli Günlük Çalışma: ${previewConfig.dailyPaidHours.setScale(1, RoundingMode.HALF_UP)} saat",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontWeight = FontWeight.Medium,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                                )
+                            }
                         }
                     }
                 }
@@ -195,9 +249,11 @@ fun VardiyaSetupDialog(
         confirmButton = {
             Button(
                 onClick = {
-                    previewConfig?.let { onSave(it) }
+                    if (previewConfig != null) {
+                        onSave(previewConfig)
+                    }
                 },
-                enabled = previewConfig != null
+                enabled = validationResult is SalaryValidationResult.Valid && previewConfig != null
             ) {
                 Text("Kaydet")
             }

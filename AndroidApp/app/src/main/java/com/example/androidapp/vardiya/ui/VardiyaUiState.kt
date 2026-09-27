@@ -20,7 +20,9 @@ data class VardiyaUiState(
     val currentShift: Shift? = null,
     val history: List<CompletedShiftRecord> = emptyList(),
     val isSetupVisible: Boolean = false,
-    val isHistoryVisible: Boolean = false
+    val isHistoryVisible: Boolean = false,
+    val selectedHistoryRecord: CompletedShiftRecord? = null,
+    val errorMessage: String? = null
 ) {
     companion object {
         private val turkishSymbols = DecimalFormatSymbols(Locale("tr", "TR")).apply {
@@ -40,7 +42,7 @@ data class VardiyaUiState(
 
     val heroAmountText: String
         get() = when (shiftState) {
-            ShiftState.NOT_STARTED -> "${moneyFormat.format(salaryConfig.monthlySalary.setScale(0, RoundingMode.HALF_UP))} ${salaryConfig.currencySymbol}"
+            ShiftState.NOT_STARTED -> "${salaryConfig.currencySymbol}${moneyFormat.format(salaryConfig.monthlySalary.setScale(0, RoundingMode.HALF_UP))}"
             ShiftState.RUNNING, ShiftState.PAUSED, ShiftState.FINISHED -> earnings.formattedEarned
         }
 

@@ -3,13 +3,13 @@ package com.example.androidapp.vardiya.ui
 import com.example.androidapp.vardiya.data.repository.InMemoryVardiyaRepository
 import com.example.androidapp.vardiya.domain.calculator.ShiftEarningsCalculator
 import com.example.androidapp.vardiya.domain.model.SalaryConfiguration
-import com.example.androidapp.vardiya.domain.model.Shift
 import com.example.androidapp.vardiya.domain.model.ShiftState
 import com.example.androidapp.vardiya.domain.time.TimeProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
@@ -70,16 +70,17 @@ class VardiyaViewModelTest {
         val state = viewModel.uiState.value
         assertEquals(ShiftState.NOT_STARTED, state.shiftState)
         assertEquals("VARDİYAYA HAZIR", state.stateBadgeText)
-        assertEquals("28.000 ₺", state.heroAmountText)
+        assertEquals("₺28.000", state.heroAmountText)
         assertEquals("AYLIK MAAŞ", state.heroSubtitleText)
         assertNull(state.currentShift)
     }
 
     @Test
-    fun testStartShiftTransitionsToRunning() {
+    fun testStartShiftTransitionsToRunning() = runTest(testDispatcher) {
         viewModel.startShift()
-        val state = viewModel.uiState.value
+        runCurrent()
 
+        val state = viewModel.uiState.value
         assertEquals(ShiftState.RUNNING, state.shiftState)
         assertEquals("VARDİYA AKTİF", state.stateBadgeText)
         assertNotNull(state.currentShift)
@@ -90,12 +91,15 @@ class VardiyaViewModelTest {
     @Test
     fun testPauseShiftFreezesDurationAndEarnings() = runTest(testDispatcher) {
         viewModel.startShift()
+        runCurrent()
 
         // 10 minutes pass
         timeProvider.advance(10 * 60 * 1000L)
         advanceTimeBy(10 * 60 * 1000L)
 
         viewModel.pauseShift()
+        runCurrent()
+
         val pausedState = viewModel.uiState.value
         assertEquals(ShiftState.PAUSED, pausedState.shiftState)
         assertEquals("VARDİYA DURAKLATILDI", pausedState.stateBadgeText)
@@ -106,6 +110,7 @@ class VardiyaViewModelTest {
         // 30 minutes pass while paused
         timeProvider.advance(30 * 60 * 1000L)
         advanceTimeBy(30 * 60 * 1000L)
+        runCurrent()
 
         // State remains frozen
         assertEquals(frozenDuration, viewModel.uiState.value.earnings.activeDurationMs)
@@ -114,18 +119,21 @@ class VardiyaViewModelTest {
     @Test
     fun testResumeShiftContinuesAccumulation() = runTest(testDispatcher) {
         viewModel.startShift()
+        runCurrent()
 
         // 10 mins active
         timeProvider.advance(10 * 60 * 1000L)
         advanceTimeBy(10 * 60 * 1000L)
 
         viewModel.pauseShift()
+        runCurrent()
 
         // 20 mins paused
         timeProvider.advance(20 * 60 * 1000L)
         advanceTimeBy(20 * 60 * 1000L)
 
         viewModel.resumeShift()
+        runCurrent()
         assertEquals(ShiftState.RUNNING, viewModel.uiState.value.shiftState)
 
         // 5 mins active after resume
@@ -143,15 +151,18 @@ class VardiyaViewModelTest {
     }
 
     @Test
-    fun testFinishShiftRecordsHistoryAndFreezes() {
+    fun testFinishShiftRecordsHistoryAndFreezes() = runTest(testDispatcher) {
         viewModel.startShift()
+        runCurrent()
 
         // 2 hours pass
         timeProvider.advance(2 * 3600 * 1000L)
+        advanceTimeBy(2 * 3600 * 1000L)
 
         viewModel.finishShift()
-        val state = viewModel.uiState.value
+        runCurrent()
 
+        val state = viewModel.uiState.value
         assertEquals(ShiftState.FINISHED, state.shiftState)
         assertEquals("VARDİYA TAMAMLANDI", state.stateBadgeText)
         assertEquals(1, state.history.size)
@@ -162,10 +173,13 @@ class VardiyaViewModelTest {
     }
 
     @Test
-    fun testResetShiftReturnsToReady() {
+    fun testResetShiftReturnsToReady() = runTest(testDispatcher) {
         viewModel.startShift()
+        runCurrent()
         viewModel.finishShift()
+        runCurrent()
         viewModel.resetShift()
+        runCurrent()
 
         val state = viewModel.uiState.value
         assertEquals(ShiftState.NOT_STARTED, state.shiftState)
@@ -174,9 +188,38 @@ class VardiyaViewModelTest {
     }
 
     @Test
-    fun testAppRestartSimulationRestoresRunningShift() {
+    fun testInvalidTransitionsAreRejected() = runTest(testDispatcher) {
+        // NOT_STARTED -> PAUSE should fail
+        viewModel.pauseShift()
+        runCurrent()
+        assertEquals(ShiftState.NOT_STARTED, viewModel.uiState.value.shiftState)
+
+        // Start shift
+        viewModel.startShift()
+        runCurrent()
+        assertEquals(ShiftState.RUNNING, viewModel.uiState.value.shiftState)
+
+        // RUNNING -> START again should be ignored
+        viewModel.startShift()
+        runCurrent()
+        assertEquals(ShiftState.RUNNING, viewModel.uiState.value.shiftState)
+
+        // Finish shift
+        viewModel.finishShift()
+        runCurrent()
+        assertEquals(ShiftState.FINISHED, viewModel.uiState.value.shiftState)
+
+        // FINISHED -> RUNNING directly without reset should be rejected
+        viewModel.startShift()
+        runCurrent()
+        assertEquals(ShiftState.FINISHED, viewModel.uiState.value.shiftState)
+    }
+
+    @Test
+    fun testAppRestartSimulationRestoresRunningShift() = runTest(testDispatcher) {
         // Start shift in one session
         viewModel.startShift()
+        runCurrent()
         timeProvider.advance(45 * 60 * 1000L) // 45 minutes active
 
         // Simulate app closing and new ViewModel instance opening
@@ -202,7 +245,7 @@ class VardiyaViewModelTest {
     }
 
     @Test
-    fun testUpdateSalaryConfigurationUpdatesBaseline() {
+    fun testUpdateSalaryConfigurationUpdatesBaseline() = runTest(testDispatcher) {
         val newConfig = SalaryConfiguration(
             monthlySalary = BigDecimal("44000"),
             monthlyWorkDays = 22,
@@ -210,13 +253,40 @@ class VardiyaViewModelTest {
         )
 
         viewModel.updateSalaryConfig(newConfig)
+        runCurrent()
 
         val state = viewModel.uiState.value
         assertEquals(BigDecimal("44000"), state.salaryConfig.monthlySalary)
-        assertEquals("44.000 ₺", state.heroAmountText)
+        assertEquals("₺44.000", state.heroAmountText)
 
         // Hourly rate: 44,000 / 176 = 250 TL
-        assertEquals(BigDecimal("250.0000000000"), state.earnings.hourlyRate)
+        val hourly = state.earnings.hourlyRate.setScale(2, RoundingMode.HALF_UP)
+        assertEquals(BigDecimal("250.00"), hourly)
+    }
+
+    @Test
+    fun testHistoryPreservesSalaryConfigSnapshotAfterConfigChange() = runTest(testDispatcher) {
+        // Complete shift under 28,000 TL config
+        viewModel.startShift()
+        runCurrent()
+        timeProvider.advance(3600 * 1000L) // 1 hour
+        viewModel.finishShift()
+        runCurrent()
+
+        val oldHistoryEarned = viewModel.uiState.value.history.first().totalEarned.setScale(2, RoundingMode.HALF_UP)
+        assertEquals(BigDecimal("159.09"), oldHistoryEarned)
+
+        // Update salary config to 50,000 TL
+        viewModel.resetShift()
+        runCurrent()
+        viewModel.updateSalaryConfig(
+            SalaryConfiguration(monthlySalary = BigDecimal("50000"))
+        )
+        runCurrent()
+
+        // Old history record must NOT be mutated!
+        val historyRecord = viewModel.uiState.value.history.first()
+        assertEquals(BigDecimal("159.09"), historyRecord.totalEarned.setScale(2, RoundingMode.HALF_UP))
+        assertEquals(BigDecimal("28000"), historyRecord.salaryConfigSnapshot.monthlySalary)
     }
 }
-

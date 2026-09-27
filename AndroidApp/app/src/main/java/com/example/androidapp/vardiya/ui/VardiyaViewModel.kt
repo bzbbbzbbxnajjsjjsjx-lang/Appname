@@ -20,6 +20,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -36,6 +38,7 @@ class VardiyaViewModel(
     val uiState: StateFlow<VardiyaUiState> = _uiState.asStateFlow()
 
     private var tickerJob: Job? = null
+    private val actionMutex = Mutex()
 
     init {
         loadPersistedState()
@@ -81,161 +84,194 @@ class VardiyaViewModel(
     }
 
     fun startShift() {
-        if (_uiState.value.shiftState == ShiftState.RUNNING) return
+        viewModelScope.launch(dispatcher) {
+            actionMutex.withLock {
+                val currentState = _uiState.value.shiftState
+                if (!currentState.canTransitionTo(ShiftState.RUNNING)) return@withLock
 
-        val nowElapsed = timeProvider.elapsedRealtimeMillis()
-        val nowEpoch = timeProvider.currentEpochMillis()
-        val config = _uiState.value.salaryConfig
+                val nowElapsed = timeProvider.elapsedRealtimeMillis()
+                val nowEpoch = timeProvider.currentEpochMillis()
+                val config = _uiState.value.salaryConfig
 
-        val newShift = Shift(
-            id = UUID.randomUUID().toString(),
-            startEpochMillis = nowEpoch,
-            startElapsedRealtime = nowElapsed,
-            accumulatedActiveElapsedMs = 0L,
-            lastResumeElapsedRealtime = nowElapsed,
-            state = ShiftState.RUNNING,
-            salaryConfig = config
-        )
+                val newShift = Shift(
+                    id = UUID.randomUUID().toString(),
+                    startEpochMillis = nowEpoch,
+                    startElapsedRealtime = nowElapsed,
+                    lastResumeEpochMillis = nowEpoch,
+                    accumulatedActiveElapsedMs = 0L,
+                    lastResumeElapsedRealtime = nowElapsed,
+                    state = ShiftState.RUNNING,
+                    salaryConfig = config
+                )
 
-        repository.saveActiveShift(newShift)
+                repository.saveActiveShift(newShift)
 
-        val earnings = calculator.calculateEarnings(newShift, 0L)
-        _uiState.update {
-            it.copy(
-                shiftState = ShiftState.RUNNING,
-                currentShift = newShift,
-                earnings = earnings
-            )
+                val earnings = calculator.calculateEarnings(newShift, 0L)
+                _uiState.update {
+                    it.copy(
+                        shiftState = ShiftState.RUNNING,
+                        currentShift = newShift,
+                        earnings = earnings
+                    )
+                }
+
+                startTicker()
+            }
         }
-
-        startTicker()
     }
 
     fun pauseShift() {
-        val current = _uiState.value.currentShift ?: return
-        if (current.state != ShiftState.RUNNING) return
+        viewModelScope.launch(dispatcher) {
+            actionMutex.withLock {
+                val current = _uiState.value.currentShift ?: return@withLock
+                if (!current.state.canTransitionTo(ShiftState.PAUSED)) return@withLock
 
-        stopTicker()
+                stopTicker()
 
-        val nowElapsed = timeProvider.elapsedRealtimeMillis()
-        val nowEpoch = timeProvider.currentEpochMillis()
-        val segment = (nowElapsed - current.lastResumeElapsedRealtime).coerceAtLeast(0L)
-        val totalActive = current.accumulatedActiveElapsedMs + segment
+                val nowElapsed = timeProvider.elapsedRealtimeMillis()
+                val nowEpoch = timeProvider.currentEpochMillis()
+                val totalActive = calculator.calculateActiveDurationMs(current, nowElapsed, nowEpoch)
 
-        val pausedShift = current.copy(
-            accumulatedActiveElapsedMs = totalActive,
-            pauseEpochMillis = nowEpoch,
-            state = ShiftState.PAUSED
-        )
+                val pausedShift = current.copy(
+                    accumulatedActiveElapsedMs = totalActive,
+                    pauseEpochMillis = nowEpoch,
+                    state = ShiftState.PAUSED
+                )
 
-        repository.saveActiveShift(pausedShift)
+                repository.saveActiveShift(pausedShift)
 
-        val earnings = calculator.calculateEarnings(pausedShift, totalActive)
-        _uiState.update {
-            it.copy(
-                shiftState = ShiftState.PAUSED,
-                currentShift = pausedShift,
-                earnings = earnings
-            )
+                val earnings = calculator.calculateEarnings(pausedShift, totalActive)
+                _uiState.update {
+                    it.copy(
+                        shiftState = ShiftState.PAUSED,
+                        currentShift = pausedShift,
+                        earnings = earnings
+                    )
+                }
+            }
         }
     }
 
     fun resumeShift() {
-        val current = _uiState.value.currentShift ?: return
-        if (current.state != ShiftState.PAUSED) return
+        viewModelScope.launch(dispatcher) {
+            actionMutex.withLock {
+                val current = _uiState.value.currentShift ?: return@withLock
+                if (!current.state.canTransitionTo(ShiftState.RUNNING)) return@withLock
 
-        val nowElapsed = timeProvider.elapsedRealtimeMillis()
-        val resumedShift = current.copy(
-            lastResumeElapsedRealtime = nowElapsed,
-            pauseEpochMillis = null,
-            state = ShiftState.RUNNING
-        )
+                val nowElapsed = timeProvider.elapsedRealtimeMillis()
+                val nowEpoch = timeProvider.currentEpochMillis()
 
-        repository.saveActiveShift(resumedShift)
+                val resumedShift = current.copy(
+                    lastResumeElapsedRealtime = nowElapsed,
+                    lastResumeEpochMillis = nowEpoch,
+                    pauseEpochMillis = null,
+                    state = ShiftState.RUNNING
+                )
 
-        _uiState.update {
-            it.copy(
-                shiftState = ShiftState.RUNNING,
-                currentShift = resumedShift
-            )
+                repository.saveActiveShift(resumedShift)
+
+                _uiState.update {
+                    it.copy(
+                        shiftState = ShiftState.RUNNING,
+                        currentShift = resumedShift
+                    )
+                }
+
+                startTicker()
+            }
         }
-
-        startTicker()
     }
 
     fun finishShift() {
-        val current = _uiState.value.currentShift ?: return
-        if (current.state != ShiftState.RUNNING && current.state != ShiftState.PAUSED) return
+        viewModelScope.launch(dispatcher) {
+            actionMutex.withLock {
+                val current = _uiState.value.currentShift ?: return@withLock
+                if (!current.state.canTransitionTo(ShiftState.FINISHED)) return@withLock
 
-        stopTicker()
+                stopTicker()
 
-        val nowElapsed = timeProvider.elapsedRealtimeMillis()
-        val nowEpoch = timeProvider.currentEpochMillis()
-        val totalActiveMs = calculator.calculateActiveDurationMs(current, nowElapsed, nowEpoch)
-        val finalEarnings = calculator.calculateEarnings(current, totalActiveMs)
+                val nowElapsed = timeProvider.elapsedRealtimeMillis()
+                val nowEpoch = timeProvider.currentEpochMillis()
+                val totalActiveMs = calculator.calculateActiveDurationMs(current, nowElapsed, nowEpoch)
+                val finalEarnings = calculator.calculateEarnings(current, totalActiveMs)
 
-        val finishedShift = current.copy(
-            finishEpochMillis = nowEpoch,
-            accumulatedActiveElapsedMs = totalActiveMs,
-            state = ShiftState.FINISHED,
-            totalEarnedWhenFinished = finalEarnings.earnedAmount
-        )
+                val finishedShift = current.copy(
+                    finishEpochMillis = nowEpoch,
+                    accumulatedActiveElapsedMs = totalActiveMs,
+                    state = ShiftState.FINISHED,
+                    totalEarnedWhenFinished = finalEarnings.earnedAmount
+                )
 
-        repository.saveActiveShift(finishedShift)
+                repository.saveActiveShift(finishedShift)
 
-        // Record history entry
-        val historyRecord = createHistoryRecord(finishedShift, finalEarnings.formattedEarned)
-        repository.addShiftToHistory(historyRecord)
+                // Record immutable history entry with frozen salary config snapshot
+                val historyRecord = createHistoryRecord(finishedShift, finalEarnings.formattedEarned, nowEpoch)
+                repository.addShiftToHistory(historyRecord)
 
-        val updatedHistory = repository.getShiftHistory()
+                val updatedHistory = repository.getShiftHistory()
 
-        _uiState.update {
-            it.copy(
-                shiftState = ShiftState.FINISHED,
-                currentShift = finishedShift,
-                earnings = finalEarnings,
-                history = updatedHistory
-            )
+                _uiState.update {
+                    it.copy(
+                        shiftState = ShiftState.FINISHED,
+                        currentShift = finishedShift,
+                        earnings = finalEarnings,
+                        history = updatedHistory
+                    )
+                }
+            }
         }
     }
 
     fun resetShift() {
-        stopTicker()
-        repository.saveActiveShift(null)
+        viewModelScope.launch(dispatcher) {
+            actionMutex.withLock {
+                val current = _uiState.value.currentShift
+                if (current != null && !current.state.canTransitionTo(ShiftState.NOT_STARTED)) {
+                    return@withLock
+                }
 
-        val config = _uiState.value.salaryConfig
-        val emptyShift = Shift(salaryConfig = config)
-        val baselineEarnings = calculator.calculateEarnings(emptyShift, 0L)
+                stopTicker()
+                repository.saveActiveShift(null)
 
-        _uiState.update {
-            it.copy(
-                shiftState = ShiftState.NOT_STARTED,
-                currentShift = null,
-                earnings = baselineEarnings
-            )
+                val config = _uiState.value.salaryConfig
+                val emptyShift = Shift(salaryConfig = config)
+                val baselineEarnings = calculator.calculateEarnings(emptyShift, 0L)
+
+                _uiState.update {
+                    it.copy(
+                        shiftState = ShiftState.NOT_STARTED,
+                        currentShift = null,
+                        earnings = baselineEarnings
+                    )
+                }
+            }
         }
     }
 
     fun updateSalaryConfig(newConfig: SalaryConfiguration) {
-        repository.saveSalaryConfiguration(newConfig)
+        viewModelScope.launch(dispatcher) {
+            actionMutex.withLock {
+                repository.saveSalaryConfiguration(newConfig)
 
-        val currentShift = _uiState.value.currentShift
-        val updatedShift = currentShift?.copy(salaryConfig = newConfig)
-        if (updatedShift != null) {
-            repository.saveActiveShift(updatedShift)
-        }
+                val currentShift = _uiState.value.currentShift
+                val updatedShift = currentShift?.copy(salaryConfig = newConfig)
+                if (updatedShift != null) {
+                    repository.saveActiveShift(updatedShift)
+                }
 
-        val activeDurationMs = _uiState.value.earnings.activeDurationMs
-        val dummyOrCurrentShift = updatedShift ?: Shift(salaryConfig = newConfig)
-        val updatedEarnings = calculator.calculateEarnings(dummyOrCurrentShift, activeDurationMs)
+                val activeDurationMs = _uiState.value.earnings.activeDurationMs
+                val dummyOrCurrentShift = updatedShift ?: Shift(salaryConfig = newConfig)
+                val updatedEarnings = calculator.calculateEarnings(dummyOrCurrentShift, activeDurationMs)
 
-        _uiState.update {
-            it.copy(
-                salaryConfig = newConfig,
-                currentShift = updatedShift,
-                earnings = updatedEarnings,
-                isSetupVisible = false
-            )
+                _uiState.update {
+                    it.copy(
+                        salaryConfig = newConfig,
+                        currentShift = updatedShift,
+                        earnings = updatedEarnings,
+                        isSetupVisible = false
+                    )
+                }
+            }
         }
     }
 
@@ -252,12 +288,24 @@ class VardiyaViewModel(
     }
 
     fun closeHistory() {
-        _uiState.update { it.copy(isHistoryVisible = false) }
+        _uiState.update { it.copy(isHistoryVisible = false, selectedHistoryRecord = null) }
+    }
+
+    fun selectHistoryRecord(record: CompletedShiftRecord?) {
+        _uiState.update { it.copy(selectedHistoryRecord = record) }
     }
 
     fun clearHistory() {
-        repository.clearShiftHistory()
-        _uiState.update { it.copy(history = emptyList()) }
+        viewModelScope.launch(dispatcher) {
+            actionMutex.withLock {
+                repository.clearShiftHistory()
+                _uiState.update { it.copy(history = emptyList(), selectedHistoryRecord = null) }
+            }
+        }
+    }
+
+    fun clearError() {
+        _uiState.update { it.copy(errorMessage = null) }
     }
 
     private fun startTicker() {
@@ -290,21 +338,26 @@ class VardiyaViewModel(
         stopTicker()
     }
 
-    private fun createHistoryRecord(shift: Shift, earnedFormatted: String): CompletedShiftRecord {
+    private fun createHistoryRecord(
+        shift: Shift,
+        earnedFormatted: String,
+        finishEpoch: Long
+    ): CompletedShiftRecord {
         val turkishLocale = Locale("tr", "TR")
         val dateFormat = SimpleDateFormat("dd MMMM yyyy", turkishLocale)
         val timeFormat = SimpleDateFormat("HH:mm", turkishLocale)
 
         val startDate = Date(shift.startEpochMillis)
-        val finishDate = Date(shift.finishEpochMillis ?: shift.startEpochMillis)
+        val finishDate = Date(finishEpoch)
 
         val dateStr = dateFormat.format(startDate)
         val timeRange = "${timeFormat.format(startDate)} — ${timeFormat.format(finishDate)}"
 
-        val totalMinutes = shift.accumulatedActiveElapsedMs / 60000
+        val totalMinutes = (shift.accumulatedActiveElapsedMs / 60000).coerceAtLeast(0L)
         val hours = totalMinutes / 60
         val mins = totalMinutes % 60
         val durationFormatted = "${hours}s ${mins}dk"
+        val totalSpanMs = (finishEpoch - shift.startEpochMillis).coerceAtLeast(shift.accumulatedActiveElapsedMs)
 
         return CompletedShiftRecord(
             id = shift.id,
@@ -314,8 +367,12 @@ class VardiyaViewModel(
             earnedFormatted = earnedFormatted,
             totalEarned = shift.totalEarnedWhenFinished ?: shift.salaryConfig.hourlyRate,
             activeDurationMs = shift.accumulatedActiveElapsedMs,
+            totalDurationMs = totalSpanMs,
             startEpochMillis = shift.startEpochMillis,
-            finishEpochMillis = shift.finishEpochMillis ?: shift.startEpochMillis
+            finishEpochMillis = finishEpoch,
+            salaryConfigSnapshot = shift.salaryConfig,
+            currencySymbol = shift.salaryConfig.currencySymbol,
+            currencyCode = shift.salaryConfig.currencyCode
         )
     }
 }

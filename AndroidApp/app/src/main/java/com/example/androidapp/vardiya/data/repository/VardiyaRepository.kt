@@ -38,6 +38,7 @@ class LocalVardiyaRepository(
         val breakMin = prefs.getInt(KEY_SALARY_BREAK_MIN, 60)
         val deductBreak = prefs.getBoolean(KEY_SALARY_DEDUCT_BREAK, false)
         val currency = prefs.getString(KEY_SALARY_CURRENCY, "₺") ?: "₺"
+        val currencyCode = prefs.getString(KEY_SALARY_CURRENCY_CODE, "TRY") ?: "TRY"
 
         return try {
             SalaryConfiguration(
@@ -46,7 +47,8 @@ class LocalVardiyaRepository(
                 dailyWorkHours = BigDecimal(hoursStr),
                 breakMinutes = breakMin,
                 deductBreakFromSalary = deductBreak,
-                currencySymbol = currency
+                currencySymbol = currency,
+                currencyCode = currencyCode
             )
         } catch (e: Exception) {
             SalaryConfiguration()
@@ -61,6 +63,7 @@ class LocalVardiyaRepository(
             .putInt(KEY_SALARY_BREAK_MIN, config.breakMinutes)
             .putBoolean(KEY_SALARY_DEDUCT_BREAK, config.deductBreakFromSalary)
             .putString(KEY_SALARY_CURRENCY, config.currencySymbol)
+            .putString(KEY_SALARY_CURRENCY_CODE, config.currencyCode)
             .apply()
     }
 
@@ -77,6 +80,7 @@ class LocalVardiyaRepository(
 
         val startEpoch = prefs.getLong(KEY_SHIFT_START_EPOCH, 0L)
         val startElapsed = prefs.getLong(KEY_SHIFT_START_ELAPSED, 0L)
+        val lastResumeEpoch = prefs.getLong(KEY_SHIFT_LAST_RESUME_EPOCH, startEpoch)
         val accumulated = prefs.getLong(KEY_SHIFT_ACCUMULATED, 0L)
         val lastResume = prefs.getLong(KEY_SHIFT_LAST_RESUME, 0L)
         val pauseEpoch = if (prefs.contains(KEY_SHIFT_PAUSE_EPOCH)) prefs.getLong(KEY_SHIFT_PAUSE_EPOCH, 0L) else null
@@ -88,6 +92,7 @@ class LocalVardiyaRepository(
             id = shiftId,
             startEpochMillis = startEpoch,
             startElapsedRealtime = startElapsed,
+            lastResumeEpochMillis = lastResumeEpoch,
             accumulatedActiveElapsedMs = accumulated,
             lastResumeElapsedRealtime = lastResume,
             pauseEpochMillis = pauseEpoch,
@@ -105,6 +110,7 @@ class LocalVardiyaRepository(
                 .remove(KEY_SHIFT_STATE)
                 .remove(KEY_SHIFT_START_EPOCH)
                 .remove(KEY_SHIFT_START_ELAPSED)
+                .remove(KEY_SHIFT_LAST_RESUME_EPOCH)
                 .remove(KEY_SHIFT_ACCUMULATED)
                 .remove(KEY_SHIFT_LAST_RESUME)
                 .remove(KEY_SHIFT_PAUSE_EPOCH)
@@ -115,6 +121,7 @@ class LocalVardiyaRepository(
                 .putString(KEY_SHIFT_STATE, shift.state.name)
                 .putLong(KEY_SHIFT_START_EPOCH, shift.startEpochMillis)
                 .putLong(KEY_SHIFT_START_ELAPSED, shift.startElapsedRealtime)
+                .putLong(KEY_SHIFT_LAST_RESUME_EPOCH, shift.lastResumeEpochMillis)
                 .putLong(KEY_SHIFT_ACCUMULATED, shift.accumulatedActiveElapsedMs)
                 .putLong(KEY_SHIFT_LAST_RESUME, shift.lastResumeElapsedRealtime)
 
@@ -145,16 +152,45 @@ class LocalVardiyaRepository(
             val fields = item.split(FIELD_DELIMITER)
             if (fields.size >= 9) {
                 try {
+                    val id = fields[0]
+                    val dateFormatted = fields[1]
+                    val timeRangeFormatted = fields[2]
+                    val durationFormatted = fields[3]
+                    val earnedFormatted = fields[4]
+                    val totalEarned = BigDecimal(fields[5])
+                    val activeDurationMs = fields[6].toLong()
+                    val startEpochMillis = fields[7].toLong()
+                    val finishEpochMillis = fields[8].toLong()
+                    val totalDurationMs = if (fields.size > 9) fields[9].toLongOrNull() ?: activeDurationMs else activeDurationMs
+
+                    val config = if (fields.size >= 17) {
+                        SalaryConfiguration(
+                            monthlySalary = BigDecimal(fields[10]),
+                            monthlyWorkDays = fields[11].toInt(),
+                            dailyWorkHours = BigDecimal(fields[12]),
+                            breakMinutes = fields[13].toInt(),
+                            deductBreakFromSalary = fields[14].toBoolean(),
+                            currencySymbol = fields[15],
+                            currencyCode = fields[16]
+                        )
+                    } else {
+                        SalaryConfiguration()
+                    }
+
                     CompletedShiftRecord(
-                        id = fields[0],
-                        dateFormatted = fields[1],
-                        timeRangeFormatted = fields[2],
-                        durationFormatted = fields[3],
-                        earnedFormatted = fields[4],
-                        totalEarned = BigDecimal(fields[5]),
-                        activeDurationMs = fields[6].toLong(),
-                        startEpochMillis = fields[7].toLong(),
-                        finishEpochMillis = fields[8].toLong()
+                        id = id,
+                        dateFormatted = dateFormatted,
+                        timeRangeFormatted = timeRangeFormatted,
+                        durationFormatted = durationFormatted,
+                        earnedFormatted = earnedFormatted,
+                        totalEarned = totalEarned,
+                        activeDurationMs = activeDurationMs,
+                        totalDurationMs = totalDurationMs,
+                        startEpochMillis = startEpochMillis,
+                        finishEpochMillis = finishEpochMillis,
+                        salaryConfigSnapshot = config,
+                        currencySymbol = config.currencySymbol,
+                        currencyCode = config.currencyCode
                     )
                 } catch (e: Exception) {
                     null
@@ -169,6 +205,7 @@ class LocalVardiyaRepository(
         val trimmed = if (current.size > 50) current.take(50) else current
 
         val serialized = trimmed.joinToString(RECORD_DELIMITER) { r ->
+            val c = r.salaryConfigSnapshot
             listOf(
                 r.id,
                 r.dateFormatted,
@@ -178,7 +215,15 @@ class LocalVardiyaRepository(
                 r.totalEarned.toPlainString(),
                 r.activeDurationMs.toString(),
                 r.startEpochMillis.toString(),
-                r.finishEpochMillis.toString()
+                r.finishEpochMillis.toString(),
+                r.totalDurationMs.toString(),
+                c.monthlySalary.toPlainString(),
+                c.monthlyWorkDays.toString(),
+                c.dailyWorkHours.toPlainString(),
+                c.breakMinutes.toString(),
+                c.deductBreakFromSalary.toString(),
+                c.currencySymbol,
+                c.currencyCode
             ).joinToString(FIELD_DELIMITER)
         }
 
@@ -196,11 +241,13 @@ class LocalVardiyaRepository(
         private const val KEY_SALARY_BREAK_MIN = "salary_break_min"
         private const val KEY_SALARY_DEDUCT_BREAK = "salary_deduct_break"
         private const val KEY_SALARY_CURRENCY = "salary_currency"
+        private const val KEY_SALARY_CURRENCY_CODE = "salary_currency_code"
 
         private const val KEY_SHIFT_ID = "shift_id"
         private const val KEY_SHIFT_STATE = "shift_state"
         private const val KEY_SHIFT_START_EPOCH = "shift_start_epoch"
         private const val KEY_SHIFT_START_ELAPSED = "shift_start_elapsed"
+        private const val KEY_SHIFT_LAST_RESUME_EPOCH = "shift_last_resume_epoch"
         private const val KEY_SHIFT_ACCUMULATED = "shift_accumulated"
         private const val KEY_SHIFT_LAST_RESUME = "shift_last_resume"
         private const val KEY_SHIFT_PAUSE_EPOCH = "shift_pause_epoch"
