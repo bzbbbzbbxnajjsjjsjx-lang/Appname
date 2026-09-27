@@ -67,18 +67,18 @@ fun rememberCalculatorDimensions(): CalculatorDimensions {
 
     return remember(screenWidth, screenHeight) {
         when {
-            // Compact phone (e.g. width < 380dp, like 360x780dp devices)
+            // Compact phone (e.g. width < 380dp)
             screenWidth < 380 -> CalculatorDimensions(
                 horizontalPadding = 12.dp,
                 verticalPadding = 10.dp,
                 gridSpacing = 10.dp,
-                buttonHeight = 68.dp,
+                buttonHeight = 66.dp,
                 numericCornerRadius = 22.dp,
                 displayToKeypadGap = 16.dp,
-                expressionFontSize = 18.sp,
-                maxResultFontSize = 68.sp
+                expressionFontSize = 20.sp,
+                maxResultFontSize = 64.sp
             )
-            // Large phone / Phablet (e.g. width > 420dp, like 432x960dp devices)
+            // Large phone / Phablet (e.g. width > 420dp)
             screenWidth > 420 -> CalculatorDimensions(
                 horizontalPadding = 18.dp,
                 verticalPadding = 16.dp,
@@ -86,19 +86,19 @@ fun rememberCalculatorDimensions(): CalculatorDimensions {
                 buttonHeight = 78.dp,
                 numericCornerRadius = 28.dp,
                 displayToKeypadGap = 24.dp,
-                expressionFontSize = 22.sp,
-                maxResultFontSize = 82.sp
+                expressionFontSize = 24.sp,
+                maxResultFontSize = 80.sp
             )
-            // Standard flagship phone (380dp - 420dp, e.g. Pixel 8, Galaxy S24 at 392-412dp)
+            // Standard phone (380dp - 420dp, Pixel 8, Galaxy S24)
             else -> CalculatorDimensions(
                 horizontalPadding = 16.dp,
                 verticalPadding = 14.dp,
                 gridSpacing = 12.dp,
-                buttonHeight = 74.dp,
+                buttonHeight = 72.dp,
                 numericCornerRadius = 26.dp,
                 displayToKeypadGap = 20.dp,
-                expressionFontSize = 20.sp,
-                maxResultFontSize = 76.sp
+                expressionFontSize = 22.sp,
+                maxResultFontSize = 74.sp
             )
         }
     }
@@ -119,11 +119,9 @@ fun CalculatorScreen(
             .padding(horizontal = dimensions.horizontalPadding, vertical = dimensions.verticalPadding),
         verticalArrangement = Arrangement.Bottom
     ) {
-        // Flat edge-to-edge display surface
+        // Flat containerless dual-tier display
         CalculatorDisplay(
-            expression = uiState.expressionPreview,
-            result = uiState.displayText,
-            isError = uiState.isError,
+            uiState = uiState,
             dimensions = dimensions,
             modifier = Modifier
                 .fillMaxWidth()
@@ -132,25 +130,34 @@ fun CalculatorScreen(
 
         Spacer(modifier = Modifier.height(dimensions.displayToKeypadGap))
 
-        // Expressive mixed pill and rounded squircle keypad
+        // Symmetric 4x5 Google Calculator keypad
         CalculatorKeypad(
             dimensions = dimensions,
             onDigitClick = { viewModel.onDigitClicked(it) },
             onDecimalClick = { viewModel.onDecimalClicked() },
             onOperatorClick = { viewModel.onOperatorClicked(it) },
+            onParenthesisClick = { viewModel.onParenthesisClicked() },
+            onPercentClick = { viewModel.onPercentClicked() },
             onEqualsClick = { viewModel.onEqualsClicked() },
             onClearClick = { viewModel.onClearClicked() },
-            onBackspaceClick = { viewModel.onBackspaceClicked() },
-            onNegateClick = { viewModel.onNegateClicked() }
+            onBackspaceClick = { viewModel.onBackspaceClicked() }
         )
+    }
+}
+
+private fun calculateDynamicFontSize(text: String, baseSize: TextUnit): TextUnit {
+    return when {
+        text.length > 20 -> (baseSize.value * 0.45).sp
+        text.length > 15 -> (baseSize.value * 0.58).sp
+        text.length > 11 -> (baseSize.value * 0.72).sp
+        text.length > 8 -> (baseSize.value * 0.85).sp
+        else -> baseSize
     }
 }
 
 @Composable
 fun CalculatorDisplay(
-    expression: String,
-    result: String,
-    isError: Boolean,
+    uiState: CalculatorUiState,
     dimensions: CalculatorDimensions,
     modifier: Modifier = Modifier
 ) {
@@ -161,51 +168,109 @@ fun CalculatorDisplay(
         verticalArrangement = Arrangement.Bottom,
         horizontalAlignment = Alignment.End
     ) {
-        if (expression.isNotEmpty()) {
+        val isCommitted = uiState.isCommitted
+        val hasPreview = !isCommitted && uiState.liveResult.isNotEmpty()
+
+        val topText = when {
+            isCommitted -> uiState.liveExpression.ifEmpty { uiState.expressionPreview }
+            uiState.liveExpression.isNotEmpty() -> uiState.liveExpression
+            else -> uiState.displayText
+        }
+
+        val bottomText = when {
+            isCommitted -> uiState.displayText
+            hasPreview -> uiState.liveResult
+            else -> ""
+        }
+
+        // Top line
+        if (isCommitted) {
+            if (topText.isNotEmpty()) {
+                Text(
+                    text = topText,
+                    style = MaterialTheme.typography.titleLarge.copy(
+                        fontFamily = FontFamily.SansSerif,
+                        fontWeight = FontWeight.Normal,
+                        fontSize = dimensions.expressionFontSize,
+                        letterSpacing = (-0.25).sp
+                    ),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    textAlign = TextAlign.End,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .semantics { contentDescription = "Expression: $topText" }
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+            }
+        } else {
+            // Live active expression line
+            val activeFontSize = if (hasPreview) {
+                calculateDynamicFontSize(topText, (dimensions.maxResultFontSize.value * 0.65).sp)
+            } else {
+                calculateDynamicFontSize(topText, dimensions.maxResultFontSize)
+            }
+
             Text(
-                text = expression,
-                style = MaterialTheme.typography.titleMedium.copy(
+                text = topText,
+                style = MaterialTheme.typography.displayLarge.copy(
+                    fontSize = activeFontSize,
                     fontFamily = FontFamily.SansSerif,
                     fontWeight = FontWeight.Normal,
-                    fontSize = dimensions.expressionFontSize,
-                    letterSpacing = (-0.25).sp
+                    letterSpacing = (-1.2).sp,
+                    lineHeight = (activeFontSize.value * 1.05).sp
                 ),
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
+                color = MaterialTheme.colorScheme.onSurface,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
                 textAlign = TextAlign.End,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .semantics { contentDescription = "Expression: $expression" }
+                    .semantics { contentDescription = "Active expression: $topText" }
             )
-            Spacer(modifier = Modifier.height(8.dp))
         }
 
-        val resultFontSize = when {
-            result.length > 15 -> (dimensions.maxResultFontSize.value * 0.38).sp
-            result.length > 12 -> (dimensions.maxResultFontSize.value * 0.46).sp
-            result.length > 9 -> (dimensions.maxResultFontSize.value * 0.62).sp
-            result.length > 6 -> (dimensions.maxResultFontSize.value * 0.80).sp
-            else -> dimensions.maxResultFontSize
+        // Bottom line (Hero result or live preview)
+        if (isCommitted) {
+            val resultFontSize = calculateDynamicFontSize(bottomText, dimensions.maxResultFontSize)
+            Text(
+                text = bottomText,
+                style = MaterialTheme.typography.displayLarge.copy(
+                    fontSize = resultFontSize,
+                    fontFamily = FontFamily.SansSerif,
+                    fontWeight = FontWeight.Normal,
+                    letterSpacing = (-1.5).sp,
+                    lineHeight = (resultFontSize.value * 1.05).sp
+                ),
+                color = if (uiState.isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.End,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .semantics { contentDescription = if (uiState.isError) "Error: $bottomText" else "Result: $bottomText" }
+            )
+        } else if (hasPreview) {
+            Spacer(modifier = Modifier.height(4.dp))
+            val previewFontSize = calculateDynamicFontSize(bottomText, (dimensions.maxResultFontSize.value * 0.52).sp)
+            Text(
+                text = bottomText,
+                style = MaterialTheme.typography.headlineLarge.copy(
+                    fontSize = previewFontSize,
+                    fontFamily = FontFamily.SansSerif,
+                    fontWeight = FontWeight.Normal,
+                    letterSpacing = (-0.5).sp
+                ),
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.End,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .semantics { contentDescription = "Preview result: $bottomText" }
+            )
         }
-
-        Text(
-            text = result,
-            style = MaterialTheme.typography.displayLarge.copy(
-                fontSize = resultFontSize,
-                fontFamily = FontFamily.SansSerif,
-                fontWeight = FontWeight.Normal,
-                letterSpacing = (-1.5).sp,
-                lineHeight = (resultFontSize.value * 1.05).sp
-            ),
-            color = if (isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            textAlign = TextAlign.End,
-            modifier = Modifier
-                .fillMaxWidth()
-                .semantics { contentDescription = if (isError) "Error: $result" else "Result: $result" }
-        )
     }
 }
 
@@ -215,17 +280,18 @@ fun CalculatorKeypad(
     onDigitClick: (Char) -> Unit,
     onDecimalClick: () -> Unit,
     onOperatorClick: (CalculatorOperator) -> Unit,
+    onParenthesisClick: () -> Unit,
+    onPercentClick: () -> Unit,
     onEqualsClick: () -> Unit,
     onClearClick: () -> Unit,
     onBackspaceClick: () -> Unit,
-    onNegateClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(dimensions.gridSpacing)
     ) {
-        // Row 1: AC (1f), +/- (1f), ⌫ (1f), ÷ (1f)
+        // Row 1: AC, ( ), %, ÷
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(dimensions.gridSpacing)
@@ -234,35 +300,31 @@ fun CalculatorKeypad(
                 text = "AC",
                 contentDescription = "Clear all",
                 modifier = Modifier.weight(1f),
-                buttonType = CalculatorButtonType.Action,
-                cornerRadius = dimensions.numericCornerRadius,
+                buttonType = CalculatorButtonType.Function,
                 height = dimensions.buttonHeight,
                 onClick = onClearClick
             )
             CalculatorButton(
-                text = "+/-",
-                contentDescription = "Toggle sign",
+                text = "( )",
+                contentDescription = "Parentheses",
                 modifier = Modifier.weight(1f),
-                buttonType = CalculatorButtonType.Action,
-                cornerRadius = dimensions.numericCornerRadius,
+                buttonType = CalculatorButtonType.Function,
                 height = dimensions.buttonHeight,
-                onClick = onNegateClick
+                onClick = onParenthesisClick
             )
             CalculatorButton(
-                text = "⌫",
-                contentDescription = "Backspace",
+                text = "%",
+                contentDescription = "Percentage",
                 modifier = Modifier.weight(1f),
-                buttonType = CalculatorButtonType.Action,
-                cornerRadius = dimensions.numericCornerRadius,
+                buttonType = CalculatorButtonType.Function,
                 height = dimensions.buttonHeight,
-                onClick = onBackspaceClick
+                onClick = onPercentClick
             )
             CalculatorButton(
                 text = "÷",
                 contentDescription = "Division",
                 modifier = Modifier.weight(1f),
                 buttonType = CalculatorButtonType.Operator,
-                cornerRadius = dimensions.numericCornerRadius,
                 height = dimensions.buttonHeight,
                 onClick = { onOperatorClick(CalculatorOperator.DIVIDE) }
             )
@@ -273,34 +335,32 @@ fun CalculatorKeypad(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(dimensions.gridSpacing)
         ) {
-            CalculatorButton(text = "7", contentDescription = "7", modifier = Modifier.weight(1f), cornerRadius = dimensions.numericCornerRadius, height = dimensions.buttonHeight, onClick = { onDigitClick('7') })
-            CalculatorButton(text = "8", contentDescription = "8", modifier = Modifier.weight(1f), cornerRadius = dimensions.numericCornerRadius, height = dimensions.buttonHeight, onClick = { onDigitClick('8') })
-            CalculatorButton(text = "9", contentDescription = "9", modifier = Modifier.weight(1f), cornerRadius = dimensions.numericCornerRadius, height = dimensions.buttonHeight, onClick = { onDigitClick('9') })
+            CalculatorButton(text = "7", contentDescription = "7", modifier = Modifier.weight(1f), height = dimensions.buttonHeight, onClick = { onDigitClick('7') })
+            CalculatorButton(text = "8", contentDescription = "8", modifier = Modifier.weight(1f), height = dimensions.buttonHeight, onClick = { onDigitClick('8') })
+            CalculatorButton(text = "9", contentDescription = "9", modifier = Modifier.weight(1f), height = dimensions.buttonHeight, onClick = { onDigitClick('9') })
             CalculatorButton(
                 text = "×",
                 contentDescription = "Multiplication",
                 modifier = Modifier.weight(1f),
                 buttonType = CalculatorButtonType.Operator,
-                cornerRadius = dimensions.numericCornerRadius,
                 height = dimensions.buttonHeight,
                 onClick = { onOperatorClick(CalculatorOperator.MULTIPLY) }
             )
         }
 
-        // Row 3: 4, 5, 6, -
+        // Row 3: 4, 5, 6, −
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(dimensions.gridSpacing)
         ) {
-            CalculatorButton(text = "4", contentDescription = "4", modifier = Modifier.weight(1f), cornerRadius = dimensions.numericCornerRadius, height = dimensions.buttonHeight, onClick = { onDigitClick('4') })
-            CalculatorButton(text = "5", contentDescription = "5", modifier = Modifier.weight(1f), cornerRadius = dimensions.numericCornerRadius, height = dimensions.buttonHeight, onClick = { onDigitClick('5') })
-            CalculatorButton(text = "6", contentDescription = "6", modifier = Modifier.weight(1f), cornerRadius = dimensions.numericCornerRadius, height = dimensions.buttonHeight, onClick = { onDigitClick('6') })
+            CalculatorButton(text = "4", contentDescription = "4", modifier = Modifier.weight(1f), height = dimensions.buttonHeight, onClick = { onDigitClick('4') })
+            CalculatorButton(text = "5", contentDescription = "5", modifier = Modifier.weight(1f), height = dimensions.buttonHeight, onClick = { onDigitClick('5') })
+            CalculatorButton(text = "6", contentDescription = "6", modifier = Modifier.weight(1f), height = dimensions.buttonHeight, onClick = { onDigitClick('6') })
             CalculatorButton(
-                text = "-",
+                text = "−",
                 contentDescription = "Subtraction",
                 modifier = Modifier.weight(1f),
                 buttonType = CalculatorButtonType.Operator,
-                cornerRadius = dimensions.numericCornerRadius,
                 height = dimensions.buttonHeight,
                 onClick = { onOperatorClick(CalculatorOperator.SUBTRACT) }
             )
@@ -311,47 +371,39 @@ fun CalculatorKeypad(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(dimensions.gridSpacing)
         ) {
-            CalculatorButton(text = "1", contentDescription = "1", modifier = Modifier.weight(1f), cornerRadius = dimensions.numericCornerRadius, height = dimensions.buttonHeight, onClick = { onDigitClick('1') })
-            CalculatorButton(text = "2", contentDescription = "2", modifier = Modifier.weight(1f), cornerRadius = dimensions.numericCornerRadius, height = dimensions.buttonHeight, onClick = { onDigitClick('2') })
-            CalculatorButton(text = "3", contentDescription = "3", modifier = Modifier.weight(1f), cornerRadius = dimensions.numericCornerRadius, height = dimensions.buttonHeight, onClick = { onDigitClick('3') })
+            CalculatorButton(text = "1", contentDescription = "1", modifier = Modifier.weight(1f), height = dimensions.buttonHeight, onClick = { onDigitClick('1') })
+            CalculatorButton(text = "2", contentDescription = "2", modifier = Modifier.weight(1f), height = dimensions.buttonHeight, onClick = { onDigitClick('2') })
+            CalculatorButton(text = "3", contentDescription = "3", modifier = Modifier.weight(1f), height = dimensions.buttonHeight, onClick = { onDigitClick('3') })
             CalculatorButton(
                 text = "+",
                 contentDescription = "Addition",
                 modifier = Modifier.weight(1f),
                 buttonType = CalculatorButtonType.Operator,
-                cornerRadius = dimensions.numericCornerRadius,
                 height = dimensions.buttonHeight,
                 onClick = { onOperatorClick(CalculatorOperator.ADD) }
             )
         }
 
-        // Row 5: 0 (spans 2 cols), ., =
+        // Row 5: 0, ., ⌫, =
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(dimensions.gridSpacing)
         ) {
+            CalculatorButton(text = "0", contentDescription = "0", modifier = Modifier.weight(1f), height = dimensions.buttonHeight, onClick = { onDigitClick('0') })
+            CalculatorButton(text = ".", contentDescription = "Decimal point", modifier = Modifier.weight(1f), height = dimensions.buttonHeight, onClick = onDecimalClick)
             CalculatorButton(
-                text = "0",
-                contentDescription = "0",
-                modifier = Modifier.weight(2f),
-                cornerRadius = dimensions.numericCornerRadius,
-                height = dimensions.buttonHeight,
-                onClick = { onDigitClick('0') }
-            )
-            CalculatorButton(
-                text = ".",
-                contentDescription = "Decimal point",
+                text = "⌫",
+                contentDescription = "Backspace",
                 modifier = Modifier.weight(1f),
-                cornerRadius = dimensions.numericCornerRadius,
+                buttonType = CalculatorButtonType.Function,
                 height = dimensions.buttonHeight,
-                onClick = onDecimalClick
+                onClick = onBackspaceClick
             )
             CalculatorButton(
                 text = "=",
                 contentDescription = "Equals",
                 modifier = Modifier.weight(1f),
                 buttonType = CalculatorButtonType.Equals,
-                cornerRadius = dimensions.numericCornerRadius,
                 height = dimensions.buttonHeight,
                 onClick = onEqualsClick
             )
@@ -361,8 +413,8 @@ fun CalculatorKeypad(
 
 enum class CalculatorButtonType {
     Numeric,
+    Function,
     Operator,
-    Action,
     Equals
 }
 
@@ -372,7 +424,6 @@ fun CalculatorButton(
     contentDescription: String,
     modifier: Modifier = Modifier,
     buttonType: CalculatorButtonType = CalculatorButtonType.Numeric,
-    cornerRadius: Dp = 26.dp,
     height: Dp = 74.dp,
     onClick: () -> Unit
 ) {
@@ -381,7 +432,7 @@ fun CalculatorButton(
     val isPressed by interactionSource.collectIsPressedAsState()
 
     val scale by animateFloatAsState(
-        targetValue = if (isPressed) 0.96f else 1.0f,
+        targetValue = if (isPressed) 0.94f else 1.0f,
         animationSpec = spring(
             dampingRatio = Spring.DampingRatioNoBouncy,
             stiffness = Spring.StiffnessHigh
@@ -389,17 +440,12 @@ fun CalculatorButton(
         label = "btn_press_scale"
     )
 
-    val shape = when (buttonType) {
-        CalculatorButtonType.Numeric -> RoundedCornerShape(cornerRadius)
-        CalculatorButtonType.Operator,
-        CalculatorButtonType.Action,
-        CalculatorButtonType.Equals -> RoundedCornerShape(percent = 50)
-    }
+    val shape = RoundedCornerShape(percent = 50)
 
     val colors = when (buttonType) {
-        CalculatorButtonType.Action -> ButtonDefaults.buttonColors(
-            containerColor = MaterialTheme.colorScheme.tertiaryContainer,
-            contentColor = MaterialTheme.colorScheme.onTertiaryContainer
+        CalculatorButtonType.Function -> ButtonDefaults.buttonColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+            contentColor = MaterialTheme.colorScheme.onSurfaceVariant
         )
         CalculatorButtonType.Equals -> ButtonDefaults.buttonColors(
             containerColor = MaterialTheme.colorScheme.primary,
@@ -416,21 +462,21 @@ fun CalculatorButton(
     }
 
     val textStyle = when (buttonType) {
-        CalculatorButtonType.Action -> MaterialTheme.typography.titleMedium.copy(
+        CalculatorButtonType.Function -> MaterialTheme.typography.titleMedium.copy(
             fontFamily = FontFamily.SansSerif,
             fontWeight = FontWeight.Medium,
-            fontSize = (height.value * 0.30).sp,
-            letterSpacing = 0.25.sp
+            fontSize = (height.value * 0.32).sp,
+            letterSpacing = 0.2.sp
         )
         CalculatorButtonType.Operator -> MaterialTheme.typography.headlineMedium.copy(
             fontFamily = FontFamily.SansSerif,
             fontWeight = FontWeight.Normal,
-            fontSize = (height.value * 0.42).sp
+            fontSize = (height.value * 0.44).sp
         )
         CalculatorButtonType.Equals -> MaterialTheme.typography.headlineLarge.copy(
             fontFamily = FontFamily.SansSerif,
             fontWeight = FontWeight.Medium,
-            fontSize = (height.value * 0.48).sp
+            fontSize = (height.value * 0.46).sp
         )
         CalculatorButtonType.Numeric -> MaterialTheme.typography.headlineMedium.copy(
             fontFamily = FontFamily.SansSerif,

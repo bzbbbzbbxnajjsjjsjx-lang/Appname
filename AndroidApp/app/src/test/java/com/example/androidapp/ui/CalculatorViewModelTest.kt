@@ -243,4 +243,63 @@ class CalculatorViewModelTest {
         viewModel.onNegateClicked()
         assertEquals("42", viewModel.uiState.value.displayText)
     }
+
+    @Test
+    fun testParenthesesTypingAndLivePreview() {
+        // Type: 16 × ( 0 . 5 + 2 . 5 )
+        viewModel.onDigitClicked('1')
+        viewModel.onDigitClicked('6')
+        viewModel.onOperatorClicked(CalculatorOperator.MULTIPLY)
+        viewModel.onParenthesisClicked()
+        viewModel.onDigitClicked('0')
+        viewModel.onDecimalClicked()
+        viewModel.onDigitClicked('5')
+        viewModel.onOperatorClicked(CalculatorOperator.ADD)
+        viewModel.onDigitClicked('2')
+        viewModel.onDecimalClicked()
+        viewModel.onDigitClicked('5')
+
+        // Even before closing parenthesis, live preview should show 48
+        assertEquals("48", viewModel.uiState.value.liveResult)
+        assertFalse(viewModel.uiState.value.isCommitted)
+
+        // Close parenthesis
+        viewModel.onParenthesisClicked()
+        assertEquals("48", viewModel.uiState.value.liveResult)
+
+        // Press equals to commit
+        viewModel.onEqualsClicked()
+        assertEquals("48", viewModel.uiState.value.displayText)
+        assertTrue(viewModel.uiState.value.isCommitted)
+    }
+
+    @Test
+    fun testPercentageLivePreviewAndCommit() {
+        // Type: 100 + 10%
+        viewModel.onDigitClicked('1')
+        viewModel.onDigitClicked('0')
+        viewModel.onDigitClicked('0')
+        viewModel.onOperatorClicked(CalculatorOperator.ADD)
+        viewModel.onDigitClicked('1')
+        viewModel.onDigitClicked('0')
+        viewModel.onPercentClicked()
+
+        assertEquals("110", viewModel.uiState.value.liveResult)
+        viewModel.onEqualsClicked()
+        assertEquals("110", viewModel.uiState.value.displayText)
+        assertTrue(viewModel.uiState.value.isCommitted)
+    }
+
+    @Test
+    fun testParenthesisSmartMatching() {
+        // Initially opens parenthesis
+        viewModel.onParenthesisClicked()
+        assertTrue(viewModel.uiState.value.liveExpression.contains("("))
+
+        // After number, closes parenthesis
+        viewModel.onDigitClicked('9')
+        viewModel.onParenthesisClicked()
+        assertTrue(viewModel.uiState.value.liveExpression.endsWith(")"))
+    }
 }
+

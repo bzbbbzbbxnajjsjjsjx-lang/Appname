@@ -153,4 +153,60 @@ class CalculatorEngineTest {
         assertTrue(result is CalculationResult.Success)
         assertEquals("999999998000000001", (result as CalculationResult.Success).value)
     }
+
+    @Test
+    fun testExpressionWithParentheses() {
+        // 16 × (0.5 + 2.5) = 48
+        val result = engine.evaluateExpression("16 × (0.5 + 2.5)")
+        assertTrue(result is CalculationResult.Success)
+        assertEquals("48", (result as CalculationResult.Success).value)
+    }
+
+    @Test
+    fun testExpressionWithImplicitMultiplication() {
+        val result = engine.evaluateExpression("16(0.5 + 2.5)")
+        assertTrue(result is CalculationResult.Success)
+        assertEquals("48", (result as CalculationResult.Success).value)
+    }
+
+    @Test
+    fun testExpressionPercentageAddition() {
+        // 100 + 10% = 110
+        val result = engine.evaluateExpression("100 + 10%")
+        assertTrue(result is CalculationResult.Success)
+        assertEquals("110", (result as CalculationResult.Success).value)
+    }
+
+    @Test
+    fun testExpressionPercentageSubtraction() {
+        // 100 - 20% = 80
+        val result = engine.evaluateExpression("100 - 20%")
+        assertTrue(result is CalculationResult.Success)
+        assertEquals("80", (result as CalculationResult.Success).value)
+    }
+
+    @Test
+    fun testExpressionPercentageMultiplication() {
+        // 50 × 20% = 10
+        val result = engine.evaluateExpression("50 × 20%")
+        assertTrue(result is CalculationResult.Success)
+        assertEquals("10", (result as CalculationResult.Success).value)
+    }
+
+    @Test
+    fun testExpressionUnaryMinus() {
+        // -5 + 3 = -2
+        val result = engine.evaluateExpression("-5 + 3")
+        assertTrue(result is CalculationResult.Success)
+        assertEquals("-2", (result as CalculationResult.Success).value)
+    }
+
+    @Test
+    fun testLivePreviewAutoClosesParentheses() {
+        // 16 × (0.5 + 2.5 should evaluate as 48 even before user types ')'
+        val result = engine.evaluateExpression("16 × (0.5 + 2.5")
+        assertTrue(result is CalculationResult.Success)
+        assertEquals("48", (result as CalculationResult.Success).value)
+    }
 }
+

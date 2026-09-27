@@ -141,4 +141,219 @@ class CalculatorEngine {
             CalculationResult.Error("Invalid expression")
         }
     }
+
+    fun evaluateExpression(rawExpr: String): CalculationResult {
+        if (rawExpr.isBlank()) {
+            return CalculationResult.Success("0")
+        }
+
+        // Normalize unicode symbols & remove whitespace
+        var expr = rawExpr
+            .replace("×", "*")
+            .replace("÷", "/")
+            .replace("−", "-")
+            .replace(" ", "")
+
+        if (expr.isEmpty()) {
+            return CalculationResult.Success("0")
+        }
+
+        // Auto-close open parentheses for live preview
+        val openCount = expr.count { it == '(' }
+        val closeCount = expr.count { it == ')' }
+        if (openCount > closeCount) {
+            expr += ")".repeat(openCount - closeCount)
+        }
+
+        // Drop trailing operators for evaluation
+        while (expr.isNotEmpty() && (expr.last() in "+-*/(")) {
+            expr = expr.dropLast(1)
+        }
+        if (expr.isEmpty()) {
+            return CalculationResult.Success("0")
+        }
+
+        return try {
+            val tokens = tokenizeExpression(expr)
+            if (tokens.isEmpty()) {
+                return CalculationResult.Success("0")
+            }
+            val rpn = shuntingYardExpression(tokens)
+            evaluateRpnExpression(rpn)
+        } catch (e: ArithmeticException) {
+            CalculationResult.Error(e.message ?: "Calculation error")
+        } catch (e: Exception) {
+            CalculationResult.Error("Invalid expression")
+        }
+    }
+
+    private fun tokenizeExpression(expr: String): List<String> {
+        val rawTokens = mutableListOf<String>()
+        var i = 0
+        while (i < expr.length) {
+            val c = expr[i]
+            when {
+                c.isDigit() || c == '.' -> {
+                    val sb = StringBuilder()
+                    while (i < expr.length && (expr[i].isDigit() || expr[i] == '.')) {
+                        sb.append(expr[i])
+                        i++
+                    }
+                    rawTokens.add(sb.toString())
+                }
+                c in "+-*/()%" -> {
+                    rawTokens.add(c.toString())
+                    i++
+                }
+                else -> i++
+            }
+        }
+
+        // Handle implicit multiplication (e.g. 16(0.5+2.5) or (3+4)(5) or 50% * 2)
+        val withImplicitMul = mutableListOf<String>()
+        for (idx in rawTokens.indices) {
+            val t = rawTokens[idx]
+            withImplicitMul.add(t)
+            if (idx + 1 < rawTokens.size) {
+                val next = rawTokens[idx + 1]
+                val isNumOrParenOrPct = t.first().isDigit() || t.startsWith(".") || t == ")" || t == "%"
+                if (isNumOrParenOrPct && next == "(") {
+                    withImplicitMul.add("*")
+                } else if (t == ")" && (next.first().isDigit() || next.startsWith("."))) {
+                    withImplicitMul.add("*")
+                }
+            }
+        }
+
+        // Handle unary minus
+        val tokens = mutableListOf<String>()
+        for (idx in withImplicitMul.indices) {
+            val t = withImplicitMul[idx]
+            if (t == "-") {
+                val isUnary = idx == 0 || withImplicitMul[idx - 1] in listOf("(", "+", "-", "*", "/")
+                if (isUnary) {
+                    tokens.add("NEG")
+                } else {
+                    tokens.add("-")
+                }
+            } else {
+                tokens.add(t)
+            }
+        }
+
+        return tokens
+    }
+
+    private fun shuntingYardExpression(tokens: List<String>): List<String> {
+        val output = mutableListOf<String>()
+        val ops = ArrayDeque<String>()
+
+        fun precedence(op: String): Int = when (op) {
+            "+", "-" -> 1
+            "*", "/" -> 2
+            "NEG" -> 3
+            else -> 0
+        }
+
+        var i = 0
+        while (i < tokens.size) {
+            val t = tokens[i]
+            val isNumber = t.isNotEmpty() && (t[0].isDigit() || (t[0] == '.' && t.length > 1) || (t == "."))
+            if (isNumber) {
+                // Check if followed by %
+                if (i + 1 < tokens.size && tokens[i + 1] == "%") {
+                    val rawNum = if (t.startsWith(".")) "0$t" else t
+                    val numBd = BigDecimal(rawNum)
+                    // If preceding binary operator in ops is + or -: A + B% = A + (A * B / 100)
+                    val hasPrecedingAddSub = ops.isNotEmpty() && (ops.peek() == "+" || ops.peek() == "-")
+                    if (hasPrecedingAddSub && output.isNotEmpty()) {
+                        try {
+                            val baseBd = BigDecimal(output.last())
+                            val pctVal = baseBd.multiply(numBd).divide(BigDecimal("100"), DIVISION_SCALE, RoundingMode.HALF_UP)
+                            output.add(formatBigDecimal(pctVal))
+                        } catch (e: Exception) {
+                            val pctVal = numBd.divide(BigDecimal("100"), DIVISION_SCALE, RoundingMode.HALF_UP)
+                            output.add(formatBigDecimal(pctVal))
+                        }
+                    } else {
+                        val pctVal = numBd.divide(BigDecimal("100"), DIVISION_SCALE, RoundingMode.HALF_UP)
+                        output.add(formatBigDecimal(pctVal))
+                    }
+                    i += 2 // skip number and %
+                    continue
+                } else {
+                    output.add(t)
+                }
+            } else if (t == "NEG") {
+                ops.push(t)
+            } else if (t in listOf("+", "-", "*", "/")) {
+                while (ops.isNotEmpty() && ops.peek() != "(" && precedence(ops.peek() ?: "") >= precedence(t)) {
+                    output.add(ops.pop())
+                }
+                ops.push(t)
+            } else if (t == "(") {
+                ops.push(t)
+            } else if (t == ")") {
+                while (ops.isNotEmpty() && ops.peek() != "(") {
+                    output.add(ops.pop())
+                }
+                if (ops.isNotEmpty() && ops.peek() == "(") {
+                    ops.pop()
+                }
+            }
+            i++
+        }
+
+        while (ops.isNotEmpty()) {
+            output.add(ops.pop())
+        }
+
+        return output
+    }
+
+    private fun evaluateRpnExpression(rpn: List<String>): CalculationResult {
+        val stack = ArrayDeque<BigDecimal>()
+
+        for (token in rpn) {
+            when (token) {
+                "NEG" -> {
+                    if (stack.isEmpty()) return CalculationResult.Error("Invalid expression")
+                    val v = stack.pop()
+                    stack.push(v.negate())
+                }
+                "+", "-", "*", "/" -> {
+                    if (stack.size < 2) return CalculationResult.Error("Invalid expression")
+                    val b = stack.pop()
+                    val a = stack.pop()
+                    val res = when (token) {
+                        "+" -> a.add(b)
+                        "-" -> a.subtract(b)
+                        "*" -> a.multiply(b)
+                        "/" -> {
+                            if (b.compareTo(BigDecimal.ZERO) == 0) {
+                                return CalculationResult.Error("Cannot divide by zero")
+                            }
+                            try {
+                                a.divide(b)
+                            } catch (e: ArithmeticException) {
+                                a.divide(b, DIVISION_SCALE, RoundingMode.HALF_UP)
+                            }
+                        }
+                        else -> throw IllegalStateException()
+                    }
+                    stack.push(res)
+                }
+                else -> {
+                    val clean = if (token.startsWith(".")) "0$token" else token
+                    stack.push(BigDecimal(clean))
+                }
+            }
+        }
+
+        return if (stack.size == 1) {
+            CalculationResult.Success(formatBigDecimal(stack.pop()))
+        } else {
+            CalculationResult.Error("Invalid expression")
+        }
+    }
 }
