@@ -193,4 +193,54 @@ class CalculatorViewModelTest {
         assertEquals("14", viewModel.uiState.value.displayText)
         assertFalse(viewModel.uiState.value.isError)
     }
+
+    @Test
+    fun testBackspaceSingleDigitResetsToZero() {
+        viewModel.onDigitClicked('7')
+        assertEquals("7", viewModel.uiState.value.displayText)
+        viewModel.onBackspaceClicked()
+        assertEquals("0", viewModel.uiState.value.displayText)
+    }
+
+    @Test
+    fun testBackspaceMultipleDigitsRemovesLastDigit() {
+        viewModel.onDigitClicked('1')
+        viewModel.onDigitClicked('2')
+        viewModel.onDigitClicked('5')
+        assertEquals("125", viewModel.uiState.value.displayText)
+        viewModel.onBackspaceClicked()
+        assertEquals("12", viewModel.uiState.value.displayText)
+        viewModel.onBackspaceClicked()
+        assertEquals("1", viewModel.uiState.value.displayText)
+    }
+
+    @Test
+    fun testBackspaceAfterCalculationResetsCleanly() {
+        viewModel.onDigitClicked('8')
+        viewModel.onOperatorClicked(CalculatorOperator.MULTIPLY)
+        viewModel.onDigitClicked('5')
+        viewModel.onEqualsClicked()
+        assertEquals("40", viewModel.uiState.value.displayText)
+        viewModel.onBackspaceClicked()
+        assertEquals("0", viewModel.uiState.value.displayText)
+        assertEquals("", viewModel.uiState.value.expressionPreview)
+    }
+
+    @Test
+    fun testNegateTogglesSignCorrectly() {
+        // Zero stays zero
+        viewModel.onNegateClicked()
+        assertEquals("0", viewModel.uiState.value.displayText)
+
+        // Positive to negative
+        viewModel.onDigitClicked('4')
+        viewModel.onDigitClicked('2')
+        assertEquals("42", viewModel.uiState.value.displayText)
+        viewModel.onNegateClicked()
+        assertEquals("-42", viewModel.uiState.value.displayText)
+
+        // Negative back to positive
+        viewModel.onNegateClicked()
+        assertEquals("42", viewModel.uiState.value.displayText)
+    }
 }

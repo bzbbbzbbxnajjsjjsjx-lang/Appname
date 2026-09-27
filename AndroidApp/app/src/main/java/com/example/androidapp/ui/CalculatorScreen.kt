@@ -1,5 +1,6 @@
 package com.example.androidapp.ui
 
+import android.view.HapticFeedbackConstants
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -29,6 +30,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
@@ -137,7 +139,9 @@ fun CalculatorScreen(
             onDecimalClick = { viewModel.onDecimalClicked() },
             onOperatorClick = { viewModel.onOperatorClicked(it) },
             onEqualsClick = { viewModel.onEqualsClicked() },
-            onClearClick = { viewModel.onClearClicked() }
+            onClearClick = { viewModel.onClearClicked() },
+            onBackspaceClick = { viewModel.onBackspaceClicked() },
+            onNegateClick = { viewModel.onNegateClicked() }
         )
     }
 }
@@ -213,13 +217,15 @@ fun CalculatorKeypad(
     onOperatorClick: (CalculatorOperator) -> Unit,
     onEqualsClick: () -> Unit,
     onClearClick: () -> Unit,
+    onBackspaceClick: () -> Unit,
+    onNegateClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(dimensions.gridSpacing)
     ) {
-        // Row 1: AC (spans 3 cols), ÷
+        // Row 1: AC (1f), +/- (1f), ⌫ (1f), ÷ (1f)
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(dimensions.gridSpacing)
@@ -227,11 +233,29 @@ fun CalculatorKeypad(
             CalculatorButton(
                 text = "AC",
                 contentDescription = "Clear all",
-                modifier = Modifier.weight(3f),
+                modifier = Modifier.weight(1f),
                 buttonType = CalculatorButtonType.Action,
                 cornerRadius = dimensions.numericCornerRadius,
                 height = dimensions.buttonHeight,
                 onClick = onClearClick
+            )
+            CalculatorButton(
+                text = "+/-",
+                contentDescription = "Toggle sign",
+                modifier = Modifier.weight(1f),
+                buttonType = CalculatorButtonType.Action,
+                cornerRadius = dimensions.numericCornerRadius,
+                height = dimensions.buttonHeight,
+                onClick = onNegateClick
+            )
+            CalculatorButton(
+                text = "⌫",
+                contentDescription = "Backspace",
+                modifier = Modifier.weight(1f),
+                buttonType = CalculatorButtonType.Action,
+                cornerRadius = dimensions.numericCornerRadius,
+                height = dimensions.buttonHeight,
+                onClick = onBackspaceClick
             )
             CalculatorButton(
                 text = "÷",
@@ -352,14 +376,15 @@ fun CalculatorButton(
     height: Dp = 74.dp,
     onClick: () -> Unit
 ) {
+    val view = LocalView.current
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
 
     val scale by animateFloatAsState(
-        targetValue = if (isPressed) 0.95f else 1.0f,
+        targetValue = if (isPressed) 0.96f else 1.0f,
         animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = Spring.StiffnessMedium
+            dampingRatio = Spring.DampingRatioNoBouncy,
+            stiffness = Spring.StiffnessHigh
         ),
         label = "btn_press_scale"
     )
@@ -395,12 +420,12 @@ fun CalculatorButton(
             fontFamily = FontFamily.SansSerif,
             fontWeight = FontWeight.Medium,
             fontSize = (height.value * 0.30).sp,
-            letterSpacing = 0.5.sp
+            letterSpacing = 0.25.sp
         )
         CalculatorButtonType.Operator -> MaterialTheme.typography.headlineMedium.copy(
             fontFamily = FontFamily.SansSerif,
             fontWeight = FontWeight.Normal,
-            fontSize = (height.value * 0.43).sp
+            fontSize = (height.value * 0.42).sp
         )
         CalculatorButtonType.Equals -> MaterialTheme.typography.headlineLarge.copy(
             fontFamily = FontFamily.SansSerif,
@@ -415,7 +440,10 @@ fun CalculatorButton(
     }
 
     Button(
-        onClick = onClick,
+        onClick = {
+            view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+            onClick()
+        },
         interactionSource = interactionSource,
         modifier = modifier
             .height(height)

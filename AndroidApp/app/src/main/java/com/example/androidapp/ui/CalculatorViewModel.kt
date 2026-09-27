@@ -120,6 +120,42 @@ class CalculatorViewModel(
         }
     }
 
+    fun onBackspaceClicked() {
+        if (_uiState.value.isError || isCalculated) {
+            onClearClicked()
+            return
+        }
+
+        _uiState.update { current ->
+            val text = current.displayText
+            val newText = when {
+                text.length > 1 && text.startsWith("-") && text.length == 2 -> "0"
+                text.length > 1 -> text.dropLast(1)
+                else -> "0"
+            }
+            if (newText == "0") {
+                isNewOperand = true
+            }
+            current.copy(displayText = newText, isError = false)
+        }
+    }
+
+    fun onNegateClicked() {
+        if (_uiState.value.isError) {
+            return
+        }
+
+        _uiState.update { current ->
+            val text = current.displayText
+            val newText = when {
+                text == "0" -> "0"
+                text.startsWith("-") -> text.drop(1)
+                else -> "-$text"
+            }
+            current.copy(displayText = newText, isError = false)
+        }
+    }
+
     fun onClearClicked() {
         tokens.clear()
         isNewOperand = true
