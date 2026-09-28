@@ -1,5 +1,10 @@
 package com.example.androidapp.vardiya.ui
 
+import com.example.androidapp.vardiya.domain.analytics.AnalyticsPeriod
+import com.example.androidapp.vardiya.domain.analytics.MonthlyAnalyticsData
+import com.example.androidapp.vardiya.domain.analytics.OverallAnalyticsSummary
+import com.example.androidapp.vardiya.domain.analytics.ShiftAnalyticsEngine
+import com.example.androidapp.vardiya.domain.analytics.WeeklyAnalyticsData
 import com.example.androidapp.vardiya.domain.model.BreakRecord
 import com.example.androidapp.vardiya.domain.model.CompletedShiftRecord
 import com.example.androidapp.vardiya.domain.model.SalaryConfiguration
@@ -28,7 +33,11 @@ data class VardiyaUiState(
     val availableTemplates: List<ShiftTemplate> = ShiftTemplate.PRESETS,
     val selectedTemplateId: String? = null,
     val selectedHistoryRecord: CompletedShiftRecord? = null,
-    val errorMessage: String? = null
+    val errorMessage: String? = null,
+    val analyticsPeriod: AnalyticsPeriod = AnalyticsPeriod.WEEKLY,
+    val analyticsWeekAnchorMillis: Long = System.currentTimeMillis(),
+    val analyticsYear: Int = 2026,
+    val analyticsMonth: Int = 9
 ) {
     companion object {
         private val turkishSymbols = DecimalFormatSymbols(Locale.forLanguageTag("tr-TR")).apply {
@@ -108,4 +117,13 @@ data class VardiyaUiState(
                 (earnings.activeDurationMs.toFloat() / targetMs.toFloat()).coerceIn(0f, 1f)
             }
         }
+
+    val weeklyAnalytics: WeeklyAnalyticsData
+        get() = ShiftAnalyticsEngine.computeWeeklyAnalytics(history, analyticsWeekAnchorMillis)
+
+    val monthlyAnalytics: MonthlyAnalyticsData
+        get() = ShiftAnalyticsEngine.computeMonthlyAnalytics(history, analyticsYear, analyticsMonth)
+
+    val overallAnalytics: OverallAnalyticsSummary
+        get() = ShiftAnalyticsEngine.computeOverallSummary(history)
 }

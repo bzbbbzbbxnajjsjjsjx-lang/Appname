@@ -24,7 +24,9 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import com.example.androidapp.vardiya.domain.analytics.AnalyticsPeriod
 import java.text.SimpleDateFormat
+import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 import java.util.UUID
@@ -95,6 +97,16 @@ class VardiyaViewModel(
                     history = historyList
                 )
             }
+        }
+
+        val initNowEpoch = timeProvider.currentEpochMillis()
+        val initCal = Calendar.getInstance().apply { timeInMillis = initNowEpoch }
+        _uiState.update {
+            it.copy(
+                analyticsWeekAnchorMillis = initNowEpoch,
+                analyticsYear = initCal.get(Calendar.YEAR),
+                analyticsMonth = initCal.get(Calendar.MONTH) + 1
+            )
         }
     }
 
@@ -534,6 +546,59 @@ class VardiyaViewModel(
     fun clearError() {
         _uiState.update { it.copy(errorMessage = null) }
     }
+
+    fun setAnalyticsPeriod(period: AnalyticsPeriod) {
+        _uiState.update { it.copy(analyticsPeriod = period) }
+    }
+
+    fun navigateAnalyticsPrevious() {
+        _uiState.update { current ->
+            when (current.analyticsPeriod) {
+                AnalyticsPeriod.WEEKLY -> {
+                    val prevWeek = current.analyticsWeekAnchorMillis - 7 * 86_400_000L
+                    current.copy(analyticsWeekAnchorMillis = prevWeek)
+                }
+                AnalyticsPeriod.MONTHLY -> {
+                    if (current.analyticsMonth == 1) {
+                        current.copy(analyticsMonth = 12, analyticsYear = current.analyticsYear - 1)
+                    } else {
+                        current.copy(analyticsMonth = current.analyticsMonth - 1)
+                    }
+                }
+            }
+        }
+    }
+
+    fun navigateAnalyticsNext() {
+        _uiState.update { current ->
+            when (current.analyticsPeriod) {
+                AnalyticsPeriod.WEEKLY -> {
+                    val nextWeek = current.analyticsWeekAnchorMillis + 7 * 86_400_000L
+                    current.copy(analyticsWeekAnchorMillis = nextWeek)
+                }
+                AnalyticsPeriod.MONTHLY -> {
+                    if (current.analyticsMonth == 12) {
+                        current.copy(analyticsMonth = 1, analyticsYear = current.analyticsYear + 1)
+                    } else {
+                        current.copy(analyticsMonth = current.analyticsMonth + 1)
+                    }
+                }
+            }
+        }
+    }
+
+    fun resetAnalyticsToCurrent() {
+        val nowEpoch = timeProvider.currentEpochMillis()
+        val cal = Calendar.getInstance().apply { timeInMillis = nowEpoch }
+        _uiState.update {
+            it.copy(
+                analyticsWeekAnchorMillis = nowEpoch,
+                analyticsYear = cal.get(Calendar.YEAR),
+                analyticsMonth = cal.get(Calendar.MONTH) + 1
+            )
+        }
+    }
+
 
     private fun startTicker() {
         stopTicker()
