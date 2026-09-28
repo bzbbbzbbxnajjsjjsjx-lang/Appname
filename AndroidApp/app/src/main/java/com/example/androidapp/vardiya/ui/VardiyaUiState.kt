@@ -52,4 +52,15 @@ data class VardiyaUiState(
             ShiftState.RUNNING, ShiftState.PAUSED -> "BU VARDİYADA KAZANILAN"
             ShiftState.FINISHED -> "BU VARDİYADA KAZANILDI"
         }
+
+    val progress: Float
+        get() = when (shiftState) {
+            ShiftState.NOT_STARTED -> 0f
+            ShiftState.FINISHED -> 1f
+            ShiftState.RUNNING, ShiftState.PAUSED -> {
+                val targetHours = salaryConfig.dailyPaidHours
+                val targetMs = targetHours.multiply(java.math.BigDecimal(3_600_000)).toLong().coerceAtLeast(1L)
+                (earnings.activeDurationMs.toFloat() / targetMs.toFloat()).coerceIn(0f, 1f)
+            }
+        }
 }

@@ -54,6 +54,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.androidapp.vardiya.data.repository.LocalVardiyaRepository
 import com.example.androidapp.vardiya.domain.model.ShiftState
+import com.example.androidapp.vardiya.ui.components.CircularWavyProgressHero
 import com.example.androidapp.vardiya.ui.components.VardiyaHistoryDialog
 import com.example.androidapp.vardiya.ui.components.VardiyaSetupDialog
 
@@ -116,7 +117,7 @@ fun VardiyaScreen(
                         }
                     }
                 },
-                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface
                 )
             )
@@ -134,7 +135,7 @@ fun VardiyaScreen(
             // Top: State Badge
             StateBadge(shiftState = uiState.shiftState, badgeText = uiState.stateBadgeText)
 
-            // Middle: Visual Hero (Earned money, Subtitle, Rates, Timer)
+            // Middle: Visual Hero with Circular Wavy Progress Indicator
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center,
@@ -142,44 +143,19 @@ fun VardiyaScreen(
                     .fillMaxWidth()
                     .weight(1f)
             ) {
-                // Hero Amount
-                Text(
-                    text = uiState.heroAmountText,
-                    style = MaterialTheme.typography.displayLarge.copy(
-                        fontSize = when {
-                            uiState.heroAmountText.length > 15 -> 38.sp
-                            uiState.heroAmountText.length > 11 -> 46.sp
-                            uiState.heroAmountText.length > 8 -> 56.sp
-                            else -> 64.sp
-                        },
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = (-1.0).sp
-                    ),
-                    color = when (uiState.shiftState) {
-                        ShiftState.RUNNING -> MaterialTheme.colorScheme.primary
-                        ShiftState.PAUSED -> MaterialTheme.colorScheme.tertiary
-                        ShiftState.FINISHED -> MaterialTheme.colorScheme.secondary
-                        ShiftState.NOT_STARTED -> MaterialTheme.colorScheme.onSurface
-                    },
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.semantics {
-                        contentDescription = "${uiState.heroSubtitleText}: ${uiState.heroAmountText}"
-                    }
+                // Organic Wavy Circular Progress Hero
+                CircularWavyProgressHero(
+                    progress = uiState.progress,
+                    shiftState = uiState.shiftState,
+                    heroAmountText = uiState.heroAmountText,
+                    heroSubtitleText = uiState.heroSubtitleText,
+                    durationText = if (uiState.shiftState != ShiftState.NOT_STARTED) {
+                        uiState.earnings.formattedDuration
+                    } else null,
+                    modifier = Modifier.padding(vertical = 4.dp)
                 )
 
-                Spacer(modifier = Modifier.height(6.dp))
-
-                // Hero Subtitle
-                Text(
-                    text = uiState.heroSubtitleText,
-                    style = MaterialTheme.typography.labelLarge.copy(
-                        fontWeight = FontWeight.Medium,
-                        letterSpacing = 1.2.sp
-                    ),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-
-                Spacer(modifier = Modifier.height(28.dp))
+                Spacer(modifier = Modifier.height(16.dp))
 
                 // Rates breakdown card
                 Card(
@@ -192,9 +168,9 @@ fun VardiyaScreen(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(vertical = 16.dp, horizontal = 20.dp),
+                            .padding(vertical = 12.dp, horizontal = 20.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         Text(
                             text = uiState.earnings.formattedHourlyRate,
@@ -215,24 +191,6 @@ fun VardiyaScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
                         )
                     }
-                }
-
-                Spacer(modifier = Modifier.height(24.dp))
-
-                // Live Active Duration Timer
-                if (uiState.shiftState != ShiftState.NOT_STARTED) {
-                    Text(
-                        text = uiState.earnings.formattedDuration,
-                        style = MaterialTheme.typography.headlineMedium.copy(
-                            fontFamily = FontFamily.Monospace,
-                            fontWeight = FontWeight.Medium,
-                            letterSpacing = 1.0.sp
-                        ),
-                        color = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.semantics {
-                            contentDescription = "Geçen süre: ${uiState.earnings.formattedDuration}"
-                        }
-                    )
                 }
             }
 
