@@ -431,4 +431,135 @@ object VardiyaIcons {
             close()
         }.build()
     }
+
+    val Calendar: ImageVector by lazy {
+        ImageVector.Builder(
+            name = "Calendar",
+            defaultWidth = 24.dp,
+            defaultHeight = 24.dp,
+            viewportWidth = 24f,
+            viewportHeight = 24f
+        ).path(fill = SolidColor(Color.Black)) {
+            moveTo(19f, 4f)
+            horizontalLineToRelative(-1f)
+            verticalLineTo(2f)
+            horizontalLineToRelative(-2f)
+            verticalLineToRelative(2f)
+            horizontalLineTo(8f)
+            verticalLineTo(2f)
+            horizontalLineTo(6f)
+            verticalLineToRelative(2f)
+            horizontalLineTo(5f)
+            curveToRelative(-1.11f, 0f, -1.99f, 0.9f, -1.99f, 2f)
+            lineTo(3f, 20f)
+            curveToRelative(0f, 1.1f, 0.89f, 2f, 2f, 2f)
+            horizontalLineToRelative(14f)
+            curveToRelative(1.1f, 0f, 2f, -0.9f, 2f, -2f)
+            verticalLineTo(6f)
+            curveToRelative(0f, -1.1f, -0.9f, -2f, -2f, -2f)
+            close()
+            moveTo(19f, 20f)
+            horizontalLineTo(5f)
+            verticalLineTo(9f)
+            horizontalLineToRelative(14f)
+            verticalLineToRelative(11f)
+            close()
+        }.build()
+    }
+
+    val Search: ImageVector by lazy {
+        ImageVector.Builder(
+            name = "Search",
+            defaultWidth = 24.dp,
+            defaultHeight = 24.dp,
+            viewportWidth = 24f,
+            viewportHeight = 24f
+        ).path(fill = SolidColor(Color.Black)) {
+            moveTo(15.5f, 14f)
+            horizontalLineToRelative(-0.79f)
+            lineToRelative(-0.28f, -0.27f)
+            curveTo(15.41f, 12.59f, 16f, 11.11f, 16f, 9.5f)
+            curveTo(16f, 5.91f, 13.09f, 3f, 9.5f, 3f)
+            reflectiveCurveTo(3f, 5.91f, 3f, 9.5f)
+            reflectiveCurveTo(5.91f, 16f, 9.5f, 16f)
+            curveToRelative(1.61f, 0f, 3.09f, -0.59f, 4.23f, -1.57f)
+            lineToRelative(0.27f, 0.28f)
+            verticalLineToRelative(0.79f)
+            lineToRelative(5f, 4.99f)
+            lineTo(20.49f, 19f)
+            lineToRelative(-4.99f, -5f)
+            close()
+            moveTo(9.5f, 14f)
+            curveTo(7.01f, 14f, 5f, 11.99f, 5f, 9.5f)
+            reflectiveCurveTo(7.01f, 5f, 9.5f, 5f)
+            reflectiveCurveTo(14f, 7.01f, 14f, 9.5f)
+            reflectiveCurveTo(11.99f, 14f, 9.5f, 14f)
+            close()
+        }.build()
+    }
+
+    val ChevronLeft: ImageVector by lazy {
+        ImageVector.Builder(
+            name = "ChevronLeft",
+            defaultWidth = 24.dp,
+            defaultHeight = 24.dp,
+            viewportWidth = 24f,
+            viewportHeight = 24f
+        ).path(fill = SolidColor(Color.Black)) {
+            moveTo(15.41f, 7.41f)
+            lineTo(14f, 6f)
+            lineToRelative(-6f, 6f)
+            lineToRelative(6f, 6f)
+            lineToRelative(1.41f, -1.41f)
+            lineTo(10.83f, 12f)
+            close()
+        }.build()
+    }
+
+    val ChevronRight: ImageVector by lazy {
+        ImageVector.Builder(
+            name = "ChevronRight",
+            defaultWidth = 24.dp,
+            defaultHeight = 24.dp,
+            viewportWidth = 24f,
+            viewportHeight = 24f
+        ).path(fill = SolidColor(Color.Black)) {
+            moveTo(10f, 6f)
+            lineToRelative(-1.41f, 1.41f)
+            lineTo(13.17f, 12f)
+            lineToRelative(-4.58f, 4.59f)
+            lineTo(10f, 18f)
+            lineToRelative(6f, -6f)
+            close()
+        }.build()
+    }
+
+    val FilterList: ImageVector by lazy {
+        ImageVector.Builder(
+            name = "FilterList",
+            defaultWidth = 24.dp,
+            defaultHeight = 24.dp,
+            viewportWidth = 24f,
+            viewportHeight = 24f
+        ).path(fill = SolidColor(Color.Black)) {
+            moveTo(10f, 18f)
+            horizontalLineToRelative(4f)
+            verticalLineToRelative(-2f)
+            horizontalLineToRelative(-4f)
+            verticalLineToRelative(2f)
+            close()
+            moveTo(3f, 6f)
+            verticalLineToRelative(2f)
+            horizontalLineToRelative(18f)
+            verticalLineTo(6f)
+            horizontalLineTo(3f)
+            close()
+            moveTo(6f, 13f)
+            horizontalLineToRelative(12f)
+            verticalLineToRelative(-2f)
+            horizontalLineTo(6f)
+            verticalLineToRelative(2f)
+            close()
+        }.build()
+    }
 }
