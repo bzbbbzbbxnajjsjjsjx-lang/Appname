@@ -20,7 +20,7 @@ data class ShiftEarnings(
     val currencyCode: String = "TRY"
 ) {
     companion object {
-        private val turkishSymbols = DecimalFormatSymbols(Locale("tr", "TR")).apply {
+        private val turkishSymbols = DecimalFormatSymbols(Locale.forLanguageTag("tr-TR")).apply {
             decimalSeparator = ','
             groupingSeparator = '.'
         }

@@ -83,7 +83,7 @@ fun VardiyaSetupDialog(
     }
 
     val turkishSymbols = remember {
-        DecimalFormatSymbols(Locale("tr", "TR")).apply {
+        DecimalFormatSymbols(Locale.forLanguageTag("tr-TR")).apply {
             decimalSeparator = ','
             groupingSeparator = '.'
         }

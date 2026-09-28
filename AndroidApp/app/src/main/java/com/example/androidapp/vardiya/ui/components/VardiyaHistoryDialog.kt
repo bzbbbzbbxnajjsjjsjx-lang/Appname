@@ -47,7 +47,7 @@ fun VardiyaHistoryDialog(
     var showClearConfirmation by remember { mutableStateOf(false) }
 
     val turkishSymbols = remember {
-        DecimalFormatSymbols(Locale("tr", "TR")).apply {
+        DecimalFormatSymbols(Locale.forLanguageTag("tr-TR")).apply {
             decimalSeparator = ','
             groupingSeparator = '.'
         }

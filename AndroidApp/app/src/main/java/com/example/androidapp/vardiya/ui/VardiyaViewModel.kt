@@ -45,9 +45,21 @@ class VardiyaViewModel(
     }
 
     fun loadPersistedState() {
-        val config = repository.getSalaryConfiguration()
-        val persistedShift = repository.getActiveShift()
-        val historyList = repository.getShiftHistory()
+        val config = try {
+            repository.getSalaryConfiguration()
+        } catch (e: Exception) {
+            SalaryConfiguration()
+        }
+        val persistedShift = try {
+            repository.getActiveShift()
+        } catch (e: Exception) {
+            null
+        }
+        val historyList = try {
+            repository.getShiftHistory()
+        } catch (e: Exception) {
+            emptyList()
+        }
 
         if (persistedShift != null && persistedShift.state != ShiftState.NOT_STARTED) {
             val nowElapsed = timeProvider.elapsedRealtimeMillis()
@@ -104,7 +116,11 @@ class VardiyaViewModel(
                     salaryConfig = config
                 )
 
-                repository.saveActiveShift(newShift)
+                try {
+                    repository.saveActiveShift(newShift)
+                } catch (e: Exception) {
+                    _uiState.update { it.copy(errorMessage = "Vardiya kaydedilemedi: ${e.localizedMessage ?: e.message}") }
+                }
 
                 val earnings = calculator.calculateEarnings(newShift, 0L)
                 _uiState.update {
@@ -138,7 +154,11 @@ class VardiyaViewModel(
                     state = ShiftState.PAUSED
                 )
 
-                repository.saveActiveShift(pausedShift)
+                try {
+                    repository.saveActiveShift(pausedShift)
+                } catch (e: Exception) {
+                    _uiState.update { it.copy(errorMessage = "Vardiya duraklatma kaydedilemedi: ${e.localizedMessage ?: e.message}") }
+                }
 
                 val earnings = calculator.calculateEarnings(pausedShift, totalActive)
                 _uiState.update {
@@ -168,7 +188,11 @@ class VardiyaViewModel(
                     state = ShiftState.RUNNING
                 )
 
-                repository.saveActiveShift(resumedShift)
+                try {
+                    repository.saveActiveShift(resumedShift)
+                } catch (e: Exception) {
+                    _uiState.update { it.copy(errorMessage = "Vardiya devam durumu kaydedilemedi: ${e.localizedMessage ?: e.message}") }
+                }
 
                 _uiState.update {
                     it.copy(
@@ -202,13 +226,25 @@ class VardiyaViewModel(
                     totalEarnedWhenFinished = finalEarnings.earnedAmount
                 )
 
-                repository.saveActiveShift(finishedShift)
+                try {
+                    repository.saveActiveShift(finishedShift)
+                } catch (e: Exception) {
+                    _uiState.update { it.copy(errorMessage = "Vardiya tamamlama kaydedilemedi: ${e.localizedMessage ?: e.message}") }
+                }
 
                 // Record immutable history entry with frozen salary config snapshot
                 val historyRecord = createHistoryRecord(finishedShift, finalEarnings.formattedEarned, nowEpoch)
-                repository.addShiftToHistory(historyRecord)
+                try {
+                    repository.addShiftToHistory(historyRecord)
+                } catch (e: Exception) {
+                    _uiState.update { it.copy(errorMessage = "Vardiya geçmişi kaydedilemedi: ${e.localizedMessage ?: e.message}") }
+                }
 
-                val updatedHistory = repository.getShiftHistory()
+                val updatedHistory = try {
+                    repository.getShiftHistory()
+                } catch (e: Exception) {
+                    _uiState.value.history
+                }
 
                 _uiState.update {
                     it.copy(
@@ -231,7 +267,11 @@ class VardiyaViewModel(
                 }
 
                 stopTicker()
-                repository.saveActiveShift(null)
+                try {
+                    repository.saveActiveShift(null)
+                } catch (e: Exception) {
+                    _uiState.update { it.copy(errorMessage = "Vardiya sıfırlama kaydedilemedi: ${e.localizedMessage ?: e.message}") }
+                }
 
                 val config = _uiState.value.salaryConfig
                 val emptyShift = Shift(salaryConfig = config)
@@ -251,12 +291,20 @@ class VardiyaViewModel(
     fun updateSalaryConfig(newConfig: SalaryConfiguration) {
         viewModelScope.launch(dispatcher) {
             actionMutex.withLock {
-                repository.saveSalaryConfiguration(newConfig)
+                try {
+                    repository.saveSalaryConfiguration(newConfig)
+                } catch (e: Exception) {
+                    _uiState.update { it.copy(errorMessage = "Maaş ayarları kaydedilemedi: ${e.localizedMessage ?: e.message}") }
+                }
 
                 val currentShift = _uiState.value.currentShift
                 val updatedShift = currentShift?.copy(salaryConfig = newConfig)
                 if (updatedShift != null) {
-                    repository.saveActiveShift(updatedShift)
+                    try {
+                        repository.saveActiveShift(updatedShift)
+                    } catch (e: Exception) {
+                        _uiState.update { it.copy(errorMessage = "Aktif vardiya güncellenemedi: ${e.localizedMessage ?: e.message}") }
+                    }
                 }
 
                 val activeDurationMs = _uiState.value.earnings.activeDurationMs
@@ -298,8 +346,12 @@ class VardiyaViewModel(
     fun clearHistory() {
         viewModelScope.launch(dispatcher) {
             actionMutex.withLock {
-                repository.clearShiftHistory()
-                _uiState.update { it.copy(history = emptyList(), selectedHistoryRecord = null) }
+                try {
+                    repository.clearShiftHistory()
+                    _uiState.update { it.copy(history = emptyList(), selectedHistoryRecord = null) }
+                } catch (e: Exception) {
+                    _uiState.update { it.copy(errorMessage = "Geçmiş temizlenemedi: ${e.localizedMessage ?: e.message}") }
+                }
             }
         }
     }
@@ -343,7 +395,7 @@ class VardiyaViewModel(
         earnedFormatted: String,
         finishEpoch: Long
     ): CompletedShiftRecord {
-        val turkishLocale = Locale("tr", "TR")
+        val turkishLocale = Locale.forLanguageTag("tr-TR")
         val dateFormat = SimpleDateFormat("dd MMMM yyyy", turkishLocale)
         val timeFormat = SimpleDateFormat("HH:mm", turkishLocale)
 
