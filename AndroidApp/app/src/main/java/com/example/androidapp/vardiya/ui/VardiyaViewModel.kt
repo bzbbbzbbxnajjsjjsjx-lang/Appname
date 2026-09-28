@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.androidapp.vardiya.data.repository.VardiyaRepository
 import com.example.androidapp.vardiya.domain.calculator.ShiftEarningsCalculator
+import com.example.androidapp.vardiya.domain.model.BreakRecord
 import com.example.androidapp.vardiya.domain.model.CompletedShiftRecord
 import com.example.androidapp.vardiya.domain.model.SalaryConfiguration
 import com.example.androidapp.vardiya.domain.model.Shift
@@ -206,6 +207,83 @@ class VardiyaViewModel(
         }
     }
 
+    fun startBreak(isDeductedFromSalary: Boolean = false, note: String? = null) {
+        viewModelScope.launch(dispatcher) {
+            actionMutex.withLock {
+                val current = _uiState.value.currentShift ?: return@withLock
+                if (current.state != ShiftState.RUNNING) return@withLock
+                if (current.activeBreaks.any { it.isOngoing }) return@withLock
+
+                val nowEpoch = timeProvider.currentEpochMillis()
+                val nowElapsed = timeProvider.elapsedRealtimeMillis()
+                val newBreak = BreakRecord(
+                    startEpochMillis = nowEpoch,
+                    isDeductedFromSalary = isDeductedFromSalary,
+                    note = note
+                )
+                val updatedBreaks = current.activeBreaks + newBreak
+                val updatedShift = current.copy(activeBreaks = updatedBreaks)
+
+                try {
+                    repository.saveActiveShift(updatedShift)
+                } catch (e: Exception) {
+                    _uiState.update { it.copy(errorMessage = "Mola başlatılamadı: ${e.localizedMessage ?: e.message}") }
+                }
+
+                val activeMs = calculator.calculateActiveDurationMs(updatedShift, nowElapsed, nowEpoch)
+                val earnings = calculator.calculateEarnings(updatedShift, activeMs, nowEpoch)
+
+                _uiState.update {
+                    it.copy(
+                        currentShift = updatedShift,
+                        earnings = earnings
+                    )
+                }
+            }
+        }
+    }
+
+    fun endBreak() {
+        viewModelScope.launch(dispatcher) {
+            actionMutex.withLock {
+                val current = _uiState.value.currentShift ?: return@withLock
+                if (current.state != ShiftState.RUNNING) return@withLock
+                if (!current.activeBreaks.any { it.isOngoing }) return@withLock
+
+                val nowEpoch = timeProvider.currentEpochMillis()
+                val nowElapsed = timeProvider.elapsedRealtimeMillis()
+                val updatedBreaks = current.activeBreaks.map {
+                    if (it.isOngoing) it.copy(endEpochMillis = nowEpoch) else it
+                }
+                val updatedShift = current.copy(activeBreaks = updatedBreaks)
+
+                try {
+                    repository.saveActiveShift(updatedShift)
+                } catch (e: Exception) {
+                    _uiState.update { it.copy(errorMessage = "Mola tamamlanamadı: ${e.localizedMessage ?: e.message}") }
+                }
+
+                val activeMs = calculator.calculateActiveDurationMs(updatedShift, nowElapsed, nowEpoch)
+                val earnings = calculator.calculateEarnings(updatedShift, activeMs, nowEpoch)
+
+                _uiState.update {
+                    it.copy(
+                        currentShift = updatedShift,
+                        earnings = earnings
+                    )
+                }
+            }
+        }
+    }
+
+    fun toggleBreak() {
+        if (_uiState.value.isBreakActive) {
+            endBreak()
+        } else {
+            startBreak()
+        }
+    }
+
     fun finishShift() {
         viewModelScope.launch(dispatcher) {
             actionMutex.withLock {
@@ -216,10 +294,19 @@ class VardiyaViewModel(
 
                 val nowElapsed = timeProvider.elapsedRealtimeMillis()
                 val nowEpoch = timeProvider.currentEpochMillis()
-                val totalActiveMs = calculator.calculateActiveDurationMs(current, nowElapsed, nowEpoch)
-                val finalEarnings = calculator.calculateEarnings(current, totalActiveMs)
 
-                val finishedShift = current.copy(
+                // Close any ongoing break cleanly
+                val finalBreaks = if (current.activeBreaks.any { it.isOngoing }) {
+                    current.activeBreaks.map { if (it.isOngoing) it.copy(endEpochMillis = nowEpoch) else it }
+                } else {
+                    current.activeBreaks
+                }
+                val currentWithFinalBreaks = current.copy(activeBreaks = finalBreaks)
+
+                val totalActiveMs = calculator.calculateActiveDurationMs(currentWithFinalBreaks, nowElapsed, nowEpoch)
+                val finalEarnings = calculator.calculateEarnings(currentWithFinalBreaks, totalActiveMs, nowEpoch)
+
+                val finishedShift = currentWithFinalBreaks.copy(
                     finishEpochMillis = nowEpoch,
                     accumulatedActiveElapsedMs = totalActiveMs,
                     state = ShiftState.FINISHED,
@@ -371,7 +458,7 @@ class VardiyaViewModel(
                 val nowElapsed = timeProvider.elapsedRealtimeMillis()
                 val nowEpoch = timeProvider.currentEpochMillis()
                 val activeMs = calculator.calculateActiveDurationMs(current, nowElapsed, nowEpoch)
-                val currentEarnings = calculator.calculateEarnings(current, activeMs)
+                val currentEarnings = calculator.calculateEarnings(current, activeMs, nowEpoch)
 
                 _uiState.update {
                     it.copy(earnings = currentEarnings)
@@ -410,6 +497,7 @@ class VardiyaViewModel(
         val mins = totalMinutes % 60
         val durationFormatted = "${hours}s ${mins}dk"
         val totalSpanMs = (finishEpoch - shift.startEpochMillis).coerceAtLeast(shift.accumulatedActiveElapsedMs)
+        val finalEarnings = calculator.calculateEarnings(shift, shift.accumulatedActiveElapsedMs, finishEpoch)
 
         return CompletedShiftRecord(
             id = shift.id,
@@ -417,14 +505,23 @@ class VardiyaViewModel(
             timeRangeFormatted = timeRange,
             durationFormatted = durationFormatted,
             earnedFormatted = earnedFormatted,
-            totalEarned = shift.totalEarnedWhenFinished ?: shift.salaryConfig.hourlyRate,
+            totalEarned = shift.totalEarnedWhenFinished ?: finalEarnings.earnedAmount,
             activeDurationMs = shift.accumulatedActiveElapsedMs,
             totalDurationMs = totalSpanMs,
             startEpochMillis = shift.startEpochMillis,
             finishEpochMillis = finishEpoch,
             salaryConfigSnapshot = shift.salaryConfig,
             currencySymbol = shift.salaryConfig.currencySymbol,
-            currencyCode = shift.salaryConfig.currencyCode
+            currencyCode = shift.salaryConfig.currencyCode,
+            baseEarned = finalEarnings.baseEarned,
+            overtimeEarned = finalEarnings.overtimeEarned,
+            nightDifferentialEarned = finalEarnings.nightDifferentialEarned,
+            regularDurationMs = finalEarnings.regularDurationMs,
+            overtimeDurationMs = finalEarnings.overtimeDurationMs,
+            nightShiftDurationMs = finalEarnings.nightShiftDurationMs,
+            templateId = shift.templateId,
+            note = shift.note,
+            breaks = shift.activeBreaks
         )
     }
 }

@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.progressSemantics
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -45,8 +46,8 @@ import kotlin.math.sin
 
 /**
  * Large circular progress indicator with an organic, wavy edge according to Material 3 Expressive.
+ * - Dynamic wave frequency, amplitude, and color adapting to shift state, overtime, and active break.
  * - Clockwise progression starting from 12 o'clock (-90°).
- * - Deterministic, elegant sinusoidal edge variation.
  * - Smoothly animates on progress changes without continuous idle CPU consumption.
  * - Keeps center area clean, legible, and accessible.
  */
@@ -57,7 +58,11 @@ fun CircularWavyProgressHero(
     heroAmountText: String,
     heroSubtitleText: String,
     durationText: String?,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    isOvertimeActive: Boolean = false,
+    isBreakActive: Boolean = false,
+    breakDurationText: String? = null,
+    isNightShiftActive: Boolean = false
 ) {
     // Smoothly animate progress without continuous idle ticker loop
     val animatedProgress by animateFloatAsState(
@@ -66,11 +71,22 @@ fun CircularWavyProgressHero(
         label = "wavy_progress_anim"
     )
 
-    val activeColor = when (shiftState) {
-        ShiftState.RUNNING -> MaterialTheme.colorScheme.primary
-        ShiftState.PAUSED -> MaterialTheme.colorScheme.tertiary
-        ShiftState.FINISHED -> MaterialTheme.colorScheme.secondary
-        ShiftState.NOT_STARTED -> MaterialTheme.colorScheme.primary
+    val activeColor = when {
+        shiftState == ShiftState.FINISHED -> MaterialTheme.colorScheme.secondary
+        shiftState == ShiftState.PAUSED -> MaterialTheme.colorScheme.tertiary
+        isBreakActive -> MaterialTheme.colorScheme.tertiary
+        isOvertimeActive -> MaterialTheme.colorScheme.tertiary
+        shiftState == ShiftState.RUNNING -> MaterialTheme.colorScheme.primary
+        else -> MaterialTheme.colorScheme.primary
+    }
+
+    val (waveAmplitudeDp, waveCount) = when {
+        shiftState == ShiftState.FINISHED -> Pair(2.5.dp, 18.0)
+        shiftState == ShiftState.PAUSED -> Pair(1.2.dp, 14.0)
+        isBreakActive -> Pair(2.0.dp, 14.0)
+        isOvertimeActive -> Pair(4.2.dp, 20.0)
+        shiftState == ShiftState.RUNNING -> Pair(3.0.dp, 16.0)
+        else -> Pair(2.5.dp, 18.0)
     }
 
     val trackColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.75f)
@@ -94,7 +110,7 @@ fun CircularWavyProgressHero(
         ) {
             Canvas(modifier = Modifier.fillMaxSize()) {
                 val strokeWidthPx = 16.dp.toPx()
-                val waveAmplitudePx = 2.75.dp.toPx()
+                val waveAmplitudePx = waveAmplitudeDp.toPx()
                 val centerOffset = Offset(size.width / 2f, size.height / 2f)
                 val baseRadius = (min(size.width, size.height) - strokeWidthPx * 2f - waveAmplitudePx * 2f) / 2f
 
@@ -113,7 +129,6 @@ fun CircularWavyProgressHero(
                 if (currentProgress > 0.005f) {
                     val startAngleRad = -PI / 2.0 // 12 o'clock
                     val sweepAngleRad = currentProgress * 2.0 * PI
-                    val waveCount = 18.0 // 18 harmonious wave cycles around full circle
                     val sampleSteps = max(24, (currentProgress * 180.0).roundToInt())
 
                     val path = Path()
@@ -241,6 +256,35 @@ fun CircularWavyProgressHero(
                         ),
                         color = activeColor
                     )
+                }
+
+                // Dynamic Status Badge Chip inside Hero
+                if (isBreakActive) {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Surface(
+                        color = MaterialTheme.colorScheme.tertiaryContainer,
+                        shape = RoundedCornerShape(percent = 50)
+                    ) {
+                        Text(
+                            text = if (!breakDurationText.isNullOrEmpty()) "☕ Mola: $breakDurationText" else "☕ Molada",
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.onTertiaryContainer,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 2.dp)
+                        )
+                    }
+                } else if (isOvertimeActive) {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Surface(
+                        color = MaterialTheme.colorScheme.primaryContainer,
+                        shape = RoundedCornerShape(percent = 50)
+                    ) {
+                        Text(
+                            text = "⚡ Fazla Mesai",
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 2.dp)
+                        )
+                    }
                 }
             }
         }

@@ -32,12 +32,39 @@ data class VardiyaUiState(
         private val moneyFormat = DecimalFormat("#,##0", turkishSymbols)
     }
 
+    val isBreakActive: Boolean
+        get() = currentShift?.activeBreaks?.any { it.isOngoing } == true
+
+    val activeBreakDurationMs: Long
+        get() {
+            val ongoing = currentShift?.activeBreaks?.firstOrNull { it.isOngoing } ?: return 0L
+            return ongoing.getDurationMs()
+        }
+
+    val activeBreakFormattedDuration: String
+        get() {
+            val totalSeconds = (activeBreakDurationMs / 1000).coerceAtLeast(0L)
+            val hours = totalSeconds / 3600
+            val minutes = (totalSeconds % 3600) / 60
+            val seconds = totalSeconds % 60
+            return String.format(Locale.US, "%02d:%02d:%02d", hours, minutes, seconds)
+        }
+
+    val isOvertimeActive: Boolean
+        get() = earnings.isOvertimeActive
+
+    val isNightShiftActive: Boolean
+        get() = earnings.isNightShiftActive
+
     val stateBadgeText: String
-        get() = when (shiftState) {
-            ShiftState.NOT_STARTED -> "VARDİYAYA HAZIR"
-            ShiftState.RUNNING -> "VARDİYA AKTİF"
-            ShiftState.PAUSED -> "VARDİYA DURAKLATILDI"
-            ShiftState.FINISHED -> "VARDİYA TAMAMLANDI"
+        get() = when {
+            shiftState == ShiftState.RUNNING && isBreakActive -> "MOLADA"
+            shiftState == ShiftState.RUNNING && isOvertimeActive -> "FAZLA MESAİDE"
+            shiftState == ShiftState.NOT_STARTED -> "VARDİYAYA HAZIR"
+            shiftState == ShiftState.RUNNING -> "VARDİYA AKTİF"
+            shiftState == ShiftState.PAUSED -> "VARDİYA DURAKLATILDI"
+            shiftState == ShiftState.FINISHED -> "VARDİYA TAMAMLANDI"
+            else -> "VARDİYA"
         }
 
     val heroAmountText: String

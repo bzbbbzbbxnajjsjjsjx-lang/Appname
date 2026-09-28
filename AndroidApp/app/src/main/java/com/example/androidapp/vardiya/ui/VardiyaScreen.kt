@@ -55,6 +55,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.androidapp.vardiya.data.repository.LocalVardiyaRepository
 import com.example.androidapp.vardiya.domain.model.ShiftState
 import com.example.androidapp.vardiya.ui.components.CircularWavyProgressHero
+import com.example.androidapp.vardiya.ui.components.VardiyaControlBar
 import com.example.androidapp.vardiya.ui.components.VardiyaHistoryDialog
 import com.example.androidapp.vardiya.ui.components.VardiyaSetupDialog
 
@@ -133,7 +134,11 @@ fun VardiyaScreen(
             verticalArrangement = Arrangement.SpaceBetween
         ) {
             // Top: State Badge
-            StateBadge(shiftState = uiState.shiftState, badgeText = uiState.stateBadgeText)
+            StateBadge(
+                shiftState = uiState.shiftState,
+                badgeText = uiState.stateBadgeText,
+                isBreakActive = uiState.isBreakActive
+            )
 
             // Middle: Visual Hero with Circular Wavy Progress Indicator
             Column(
@@ -152,6 +157,10 @@ fun VardiyaScreen(
                     durationText = if (uiState.shiftState != ShiftState.NOT_STARTED) {
                         uiState.earnings.formattedDuration
                     } else null,
+                    isOvertimeActive = uiState.isOvertimeActive,
+                    isBreakActive = uiState.isBreakActive,
+                    breakDurationText = if (uiState.isBreakActive) uiState.activeBreakFormattedDuration else null,
+                    isNightShiftActive = uiState.isNightShiftActive,
                     modifier = Modifier.padding(vertical = 4.dp)
                 )
 
@@ -190,13 +199,23 @@ fun VardiyaScreen(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
                         )
+
+                        if (uiState.isOvertimeActive || uiState.earnings.overtimeDurationMs > 0L) {
+                            Text(
+                                text = "Mesai: ${uiState.earnings.formattedOvertimeEarned}",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
                     }
                 }
             }
 
-            // Bottom: Action Buttons
-            ActionButtons(
+            // Bottom: Material 3 Expressive Floating Control Bar
+            VardiyaControlBar(
                 shiftState = uiState.shiftState,
+                isBreakActive = uiState.isBreakActive,
                 onStart = {
                     view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                     viewModel.startShift()
@@ -208,6 +227,10 @@ fun VardiyaScreen(
                 onResume = {
                     view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                     viewModel.resumeShift()
+                },
+                onToggleBreak = {
+                    view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                    viewModel.toggleBreak()
                 },
                 onFinish = {
                     view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
@@ -240,7 +263,11 @@ fun VardiyaScreen(
 }
 
 @Composable
-private fun StateBadge(shiftState: ShiftState, badgeText: String) {
+private fun StateBadge(
+    shiftState: ShiftState,
+    badgeText: String,
+    isBreakActive: Boolean = false
+) {
     val infiniteTransition = rememberInfiniteTransition(label = "pulse")
     val pulseAlpha by infiniteTransition.animateFloat(
         initialValue = 0.3f,
@@ -253,11 +280,13 @@ private fun StateBadge(shiftState: ShiftState, badgeText: String) {
     )
 
     Surface(
-        color = when (shiftState) {
-            ShiftState.RUNNING -> MaterialTheme.colorScheme.primaryContainer
-            ShiftState.PAUSED -> MaterialTheme.colorScheme.tertiaryContainer
-            ShiftState.FINISHED -> MaterialTheme.colorScheme.secondaryContainer
-            ShiftState.NOT_STARTED -> MaterialTheme.colorScheme.surfaceContainerHigh
+        color = when {
+            shiftState == ShiftState.RUNNING && isBreakActive -> MaterialTheme.colorScheme.tertiaryContainer
+            shiftState == ShiftState.RUNNING -> MaterialTheme.colorScheme.primaryContainer
+            shiftState == ShiftState.PAUSED -> MaterialTheme.colorScheme.tertiaryContainer
+            shiftState == ShiftState.FINISHED -> MaterialTheme.colorScheme.secondaryContainer
+            shiftState == ShiftState.NOT_STARTED -> MaterialTheme.colorScheme.surfaceContainerHigh
+            else -> MaterialTheme.colorScheme.surfaceContainerHigh
         },
         shape = RoundedCornerShape(percent = 50)
     ) {
@@ -271,7 +300,10 @@ private fun StateBadge(shiftState: ShiftState, badgeText: String) {
                     modifier = Modifier
                         .size(10.dp)
                         .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.primary)
+                        .background(
+                            if (isBreakActive) MaterialTheme.colorScheme.tertiary
+                            else MaterialTheme.colorScheme.primary
+                        )
                         .alpha(pulseAlpha)
                 )
             } else if (shiftState == ShiftState.PAUSED) {
@@ -289,157 +321,15 @@ private fun StateBadge(shiftState: ShiftState, badgeText: String) {
                     fontWeight = FontWeight.Bold,
                     letterSpacing = 0.5.sp
                 ),
-                color = when (shiftState) {
-                    ShiftState.RUNNING -> MaterialTheme.colorScheme.onPrimaryContainer
-                    ShiftState.PAUSED -> MaterialTheme.colorScheme.onTertiaryContainer
-                    ShiftState.FINISHED -> MaterialTheme.colorScheme.onSecondaryContainer
-                    ShiftState.NOT_STARTED -> MaterialTheme.colorScheme.onSurfaceVariant
+                color = when {
+                    shiftState == ShiftState.RUNNING && isBreakActive -> MaterialTheme.colorScheme.onTertiaryContainer
+                    shiftState == ShiftState.RUNNING -> MaterialTheme.colorScheme.onPrimaryContainer
+                    shiftState == ShiftState.PAUSED -> MaterialTheme.colorScheme.onTertiaryContainer
+                    shiftState == ShiftState.FINISHED -> MaterialTheme.colorScheme.onSecondaryContainer
+                    shiftState == ShiftState.NOT_STARTED -> MaterialTheme.colorScheme.onSurfaceVariant
+                    else -> MaterialTheme.colorScheme.onSurfaceVariant
                 }
             )
-        }
-    }
-}
-
-@Composable
-private fun ActionButtons(
-    shiftState: ShiftState,
-    onStart: () -> Unit,
-    onPause: () -> Unit,
-    onResume: () -> Unit,
-    onFinish: () -> Unit,
-    onReset: () -> Unit
-) {
-    val buttonHeight = 64.dp
-    val buttonShape = RoundedCornerShape(percent = 50)
-
-    when (shiftState) {
-        ShiftState.NOT_STARTED -> {
-            Button(
-                onClick = onStart,
-                shape = buttonShape,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(buttonHeight)
-                    .semantics { contentDescription = "Vardiyayı başlat" },
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary
-                )
-            ) {
-                Text(
-                    text = "VARDİYAYI BAŞLAT",
-                    style = MaterialTheme.typography.titleMedium.copy(
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 0.5.sp
-                    )
-                )
-            }
-        }
-        ShiftState.RUNNING -> {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Button(
-                    onClick = onPause,
-                    shape = buttonShape,
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(buttonHeight)
-                        .semantics { contentDescription = "Vardiyayı duraklat" },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer
-                    )
-                ) {
-                    Text(
-                        text = "DURAKLAT",
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
-                    )
-                }
-
-                Button(
-                    onClick = onFinish,
-                    shape = buttonShape,
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(buttonHeight)
-                        .semantics { contentDescription = "Vardiyayı bitir" },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.errorContainer,
-                        contentColor = MaterialTheme.colorScheme.onErrorContainer
-                    )
-                ) {
-                    Text(
-                        text = "BİTİR",
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
-                    )
-                }
-            }
-        }
-        ShiftState.PAUSED -> {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Button(
-                    onClick = onResume,
-                    shape = buttonShape,
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(buttonHeight)
-                        .semantics { contentDescription = "Vardiyayı devam ettir" },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.primary,
-                        contentColor = MaterialTheme.colorScheme.onPrimary
-                    )
-                ) {
-                    Text(
-                        text = "DEVAM ET",
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
-                    )
-                }
-
-                Button(
-                    onClick = onFinish,
-                    shape = buttonShape,
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(buttonHeight)
-                        .semantics { contentDescription = "Vardiyayı bitir" },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.errorContainer,
-                        contentColor = MaterialTheme.colorScheme.onErrorContainer
-                    )
-                ) {
-                    Text(
-                        text = "BİTİR",
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
-                    )
-                }
-            }
-        }
-        ShiftState.FINISHED -> {
-            Button(
-                onClick = onReset,
-                shape = buttonShape,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(buttonHeight)
-                    .semantics { contentDescription = "Yeni vardiyaya hazırlan" },
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary
-                )
-            ) {
-                Text(
-                    text = "YENİ VARDİYA",
-                    style = MaterialTheme.typography.titleMedium.copy(
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 0.5.sp
-                    )
-                )
-            }
         }
     }
 }
