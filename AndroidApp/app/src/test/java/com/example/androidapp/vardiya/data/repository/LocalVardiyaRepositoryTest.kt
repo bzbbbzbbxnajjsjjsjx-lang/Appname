@@ -9,6 +9,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertFalse
 import org.junit.Before
 import org.junit.Test
 import java.math.BigDecimal
@@ -198,5 +199,115 @@ class LocalVardiyaRepositoryTest {
         val historyAfterConfigUpdate = repository.getShiftHistory().first()
         assertEquals(BigDecimal("24000"), historyAfterConfigUpdate.salaryConfigSnapshot.monthlySalary)
         assertEquals(BigDecimal("1200.00"), historyAfterConfigUpdate.totalEarned)
+    }
+
+    @Test
+    fun testPhaseCSalaryConfigurationPersistence() {
+        val config = SalaryConfiguration(
+            monthlySalary = BigDecimal("45000"),
+            overtimeMultiplier = BigDecimal("1.75"),
+            isOvertimeEnabled = true,
+            nightDifferentialRate = BigDecimal("0.20"),
+            isNightDifferentialEnabled = true,
+            nightShiftStartHour = 21,
+            nightShiftEndHour = 5
+        )
+
+        repository.saveSalaryConfiguration(config)
+        val restored = repository.getSalaryConfiguration()
+
+        assertEquals(BigDecimal("45000"), restored.monthlySalary)
+        assertEquals(BigDecimal("1.75"), restored.overtimeMultiplier)
+        assertTrue(restored.isOvertimeEnabled)
+        assertEquals(BigDecimal("0.20"), restored.nightDifferentialRate)
+        assertTrue(restored.isNightDifferentialEnabled)
+        assertEquals(21, restored.nightShiftStartHour)
+        assertEquals(5, restored.nightShiftEndHour)
+    }
+
+    @Test
+    fun testPhaseCShiftPersistenceWithBreaksAndTemplate() {
+        val break1 = com.example.androidapp.vardiya.domain.model.BreakRecord(
+            id = "brk-1",
+            startEpochMillis = 1000L,
+            endEpochMillis = 2000L,
+            isDeductedFromSalary = true,
+            note = "Öğle Yemeği"
+        )
+        val break2 = com.example.androidapp.vardiya.domain.model.BreakRecord(
+            id = "brk-2",
+            startEpochMillis = 3000L,
+            endEpochMillis = null,
+            isDeductedFromSalary = false,
+            note = "Kahve Molası"
+        )
+
+        val shift = Shift(
+            id = "shift-c",
+            state = ShiftState.RUNNING,
+            startEpochMillis = 1000L,
+            templateId = "preset_evening",
+            note = "Yoğun nöbet",
+            activeBreaks = listOf(break1, break2)
+        )
+
+        repository.saveActiveShift(shift)
+        val restored = repository.getActiveShift()
+
+        assertNotNull(restored)
+        assertEquals("shift-c", restored?.id)
+        assertEquals("preset_evening", restored?.templateId)
+        assertEquals("Yoğun nöbet", restored?.note)
+        assertEquals(2, restored?.activeBreaks?.size)
+
+        val restoredB1 = restored?.activeBreaks?.get(0)
+        assertEquals("brk-1", restoredB1?.id)
+        assertEquals(1000L, restoredB1?.startEpochMillis)
+        assertEquals(2000L, restoredB1?.endEpochMillis)
+        assertTrue(restoredB1?.isDeductedFromSalary == true)
+        assertEquals("Öğle Yemeği", restoredB1?.note)
+
+        val restoredB2 = restored?.activeBreaks?.get(1)
+        assertEquals("brk-2", restoredB2?.id)
+        assertNull(restoredB2?.endEpochMillis)
+        assertTrue(restoredB2?.isOngoing == true)
+        assertFalse(restoredB2?.isDeductedFromSalary == true)
+    }
+
+    @Test
+    fun testPhaseCHistoryDecomposedFieldsPersistence() {
+        val record = CompletedShiftRecord(
+            id = "rec-phase-c",
+            dateFormatted = "28 Eylül 2026",
+            timeRangeFormatted = "16:00 — 04:00",
+            durationFormatted = "12s 0dk",
+            earnedFormatted = "₺2.259,09",
+            totalEarned = BigDecimal("2259.09"),
+            activeDurationMs = 12 * 3600000L,
+            totalDurationMs = 12 * 3600000L,
+            startEpochMillis = 1700000000000L,
+            finishEpochMillis = 1700000000000L + (12 * 3600000L),
+            baseEarned = BigDecimal("1272.73"),
+            overtimeEarned = BigDecimal("954.55"),
+            nightDifferentialEarned = BigDecimal("190.91"),
+            regularDurationMs = 8 * 3600000L,
+            overtimeDurationMs = 4 * 3600000L,
+            nightShiftDurationMs = 8 * 3600000L,
+            templateId = "preset_evening",
+            note = "Ekip vardiyası"
+        )
+
+        repository.addShiftToHistory(record)
+        val loaded = repository.getShiftHistory().first()
+
+        assertEquals("rec-phase-c", loaded.id)
+        assertEquals(BigDecimal("1272.73"), loaded.baseEarned)
+        assertEquals(BigDecimal("954.55"), loaded.overtimeEarned)
+        assertEquals(BigDecimal("190.91"), loaded.nightDifferentialEarned)
+        assertEquals(8 * 3600000L, loaded.regularDurationMs)
+        assertEquals(4 * 3600000L, loaded.overtimeDurationMs)
+        assertEquals(8 * 3600000L, loaded.nightShiftDurationMs)
+        assertEquals("preset_evening", loaded.templateId)
+        assertEquals("Ekip vardiyası", loaded.note)
     }
 }

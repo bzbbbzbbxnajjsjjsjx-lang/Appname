@@ -2,6 +2,7 @@ package com.example.androidapp.vardiya.data.repository
 
 import android.content.Context
 import android.content.SharedPreferences
+import com.example.androidapp.vardiya.domain.model.BreakRecord
 import com.example.androidapp.vardiya.domain.model.CompletedShiftRecord
 import com.example.androidapp.vardiya.domain.model.SalaryConfiguration
 import com.example.androidapp.vardiya.domain.model.Shift
@@ -40,6 +41,12 @@ class LocalVardiyaRepository(
             val deductBreak = prefs.getBoolean(KEY_SALARY_DEDUCT_BREAK, false)
             val currency = prefs.getString(KEY_SALARY_CURRENCY, "₺") ?: "₺"
             val currencyCode = prefs.getString(KEY_SALARY_CURRENCY_CODE, "TRY") ?: "TRY"
+            val overtimeMultiplierStr = prefs.getString(KEY_SALARY_OVERTIME_MULTIPLIER, "1.50") ?: "1.50"
+            val isOvertimeEnabled = prefs.getBoolean(KEY_SALARY_IS_OVERTIME_ENABLED, false)
+            val nightDiffRateStr = prefs.getString(KEY_SALARY_NIGHT_DIFF_RATE, "0.15") ?: "0.15"
+            val isNightDiffEnabled = prefs.getBoolean(KEY_SALARY_IS_NIGHT_DIFF_ENABLED, false)
+            val nightStartHour = prefs.getInt(KEY_SALARY_NIGHT_START_HOUR, 20)
+            val nightEndHour = prefs.getInt(KEY_SALARY_NIGHT_END_HOUR, 6)
 
             SalaryConfiguration(
                 monthlySalary = BigDecimal(salaryStr),
@@ -48,7 +55,13 @@ class LocalVardiyaRepository(
                 breakMinutes = breakMin,
                 deductBreakFromSalary = deductBreak,
                 currencySymbol = currency,
-                currencyCode = currencyCode
+                currencyCode = currencyCode,
+                overtimeMultiplier = try { BigDecimal(overtimeMultiplierStr) } catch (e: Exception) { BigDecimal("1.50") },
+                isOvertimeEnabled = isOvertimeEnabled,
+                nightDifferentialRate = try { BigDecimal(nightDiffRateStr) } catch (e: Exception) { BigDecimal("0.15") },
+                isNightDifferentialEnabled = isNightDiffEnabled,
+                nightShiftStartHour = nightStartHour,
+                nightShiftEndHour = nightEndHour
             )
         } catch (e: Exception) {
             SalaryConfiguration()
@@ -64,6 +77,12 @@ class LocalVardiyaRepository(
             .putBoolean(KEY_SALARY_DEDUCT_BREAK, config.deductBreakFromSalary)
             .putString(KEY_SALARY_CURRENCY, config.currencySymbol)
             .putString(KEY_SALARY_CURRENCY_CODE, config.currencyCode)
+            .putString(KEY_SALARY_OVERTIME_MULTIPLIER, config.overtimeMultiplier.toPlainString())
+            .putBoolean(KEY_SALARY_IS_OVERTIME_ENABLED, config.isOvertimeEnabled)
+            .putString(KEY_SALARY_NIGHT_DIFF_RATE, config.nightDifferentialRate.toPlainString())
+            .putBoolean(KEY_SALARY_IS_NIGHT_DIFF_ENABLED, config.isNightDifferentialEnabled)
+            .putInt(KEY_SALARY_NIGHT_START_HOUR, config.nightShiftStartHour)
+            .putInt(KEY_SALARY_NIGHT_END_HOUR, config.nightShiftEndHour)
             .apply()
     }
 
@@ -88,6 +107,14 @@ class LocalVardiyaRepository(
             val finishEpoch = if (prefs.contains(KEY_SHIFT_FINISH_EPOCH)) prefs.getLong(KEY_SHIFT_FINISH_EPOCH, 0L) else null
             val earnedStr = prefs.getString(KEY_SHIFT_EARNED_FINISHED, null)
             val earnedFinished = earnedStr?.let { try { BigDecimal(it) } catch (e: Exception) { null } }
+            val templateId = prefs.getString(KEY_SHIFT_TEMPLATE_ID, null)
+            val note = prefs.getString(KEY_SHIFT_NOTE, null)
+            val breaksStr = prefs.getString(KEY_SHIFT_BREAKS, null)
+            val breaks = if (!breaksStr.isNullOrBlank()) {
+                deserializeBreaks(breaksStr)
+            } else {
+                emptyList()
+            }
 
             Shift(
                 id = shiftId,
@@ -100,7 +127,10 @@ class LocalVardiyaRepository(
                 finishEpochMillis = finishEpoch,
                 state = state,
                 salaryConfig = getSalaryConfiguration(),
-                totalEarnedWhenFinished = earnedFinished
+                totalEarnedWhenFinished = earnedFinished,
+                activeBreaks = breaks,
+                templateId = templateId,
+                note = note
             )
         } catch (e: Exception) {
             null
@@ -120,6 +150,9 @@ class LocalVardiyaRepository(
                 .remove(KEY_SHIFT_PAUSE_EPOCH)
                 .remove(KEY_SHIFT_FINISH_EPOCH)
                 .remove(KEY_SHIFT_EARNED_FINISHED)
+                .remove(KEY_SHIFT_TEMPLATE_ID)
+                .remove(KEY_SHIFT_NOTE)
+                .remove(KEY_SHIFT_BREAKS)
         } else {
             editor.putString(KEY_SHIFT_ID, shift.id)
                 .putString(KEY_SHIFT_STATE, shift.state.name)
@@ -145,6 +178,24 @@ class LocalVardiyaRepository(
                 editor.putString(KEY_SHIFT_EARNED_FINISHED, shift.totalEarnedWhenFinished.toPlainString())
             } else {
                 editor.remove(KEY_SHIFT_EARNED_FINISHED)
+            }
+
+            if (shift.templateId != null) {
+                editor.putString(KEY_SHIFT_TEMPLATE_ID, shift.templateId)
+            } else {
+                editor.remove(KEY_SHIFT_TEMPLATE_ID)
+            }
+
+            if (shift.note != null) {
+                editor.putString(KEY_SHIFT_NOTE, shift.note)
+            } else {
+                editor.remove(KEY_SHIFT_NOTE)
+            }
+
+            if (shift.activeBreaks.isNotEmpty()) {
+                editor.putString(KEY_SHIFT_BREAKS, serializeBreaks(shift.activeBreaks))
+            } else {
+                editor.remove(KEY_SHIFT_BREAKS)
             }
         }
         editor.apply()
@@ -178,7 +229,7 @@ class LocalVardiyaRepository(
                     } else activeDurationMs
 
                     val config = if (fields.size >= 17) {
-                        SalaryConfiguration(
+                        val baseConfig = SalaryConfiguration(
                             monthlySalary = BigDecimal(unescapeField(fields[10])),
                             monthlyWorkDays = unescapeField(fields[11]).toInt(),
                             dailyWorkHours = BigDecimal(unescapeField(fields[12])),
@@ -187,9 +238,30 @@ class LocalVardiyaRepository(
                             currencySymbol = unescapeField(fields[15]),
                             currencyCode = unescapeField(fields[16])
                         )
+                        if (fields.size >= 23) {
+                            baseConfig.copy(
+                                overtimeMultiplier = try { BigDecimal(unescapeField(fields[17])) } catch (e: Exception) { BigDecimal("1.50") },
+                                isOvertimeEnabled = unescapeField(fields[18]).toBoolean(),
+                                nightDifferentialRate = try { BigDecimal(unescapeField(fields[19])) } catch (e: Exception) { BigDecimal("0.15") },
+                                isNightDifferentialEnabled = unescapeField(fields[20]).toBoolean(),
+                                nightShiftStartHour = unescapeField(fields[21]).toIntOrNull() ?: 20,
+                                nightShiftEndHour = unescapeField(fields[22]).toIntOrNull() ?: 6
+                            )
+                        } else {
+                            baseConfig
+                        }
                     } else {
                         SalaryConfiguration()
                     }
+
+                    val baseEarned = if (fields.size > 23) try { BigDecimal(unescapeField(fields[23])) } catch (e: Exception) { totalEarned } else totalEarned
+                    val overtimeEarned = if (fields.size > 24) try { BigDecimal(unescapeField(fields[24])) } catch (e: Exception) { BigDecimal.ZERO } else BigDecimal.ZERO
+                    val nightDiffEarned = if (fields.size > 25) try { BigDecimal(unescapeField(fields[25])) } catch (e: Exception) { BigDecimal.ZERO } else BigDecimal.ZERO
+                    val regularDuration = if (fields.size > 26) unescapeField(fields[26]).toLongOrNull() ?: activeDurationMs else activeDurationMs
+                    val overtimeDuration = if (fields.size > 27) unescapeField(fields[27]).toLongOrNull() ?: 0L else 0L
+                    val nightDuration = if (fields.size > 28) unescapeField(fields[28]).toLongOrNull() ?: 0L else 0L
+                    val templateId = if (fields.size > 29) unescapeField(fields[29]).takeIf { it.isNotBlank() } else null
+                    val note = if (fields.size > 30) unescapeField(fields[30]).takeIf { it.isNotBlank() } else null
 
                     CompletedShiftRecord(
                         id = id,
@@ -204,7 +276,15 @@ class LocalVardiyaRepository(
                         finishEpochMillis = finishEpochMillis,
                         salaryConfigSnapshot = config,
                         currencySymbol = config.currencySymbol,
-                        currencyCode = config.currencyCode
+                        currencyCode = config.currencyCode,
+                        baseEarned = baseEarned,
+                        overtimeEarned = overtimeEarned,
+                        nightDifferentialEarned = nightDiffEarned,
+                        regularDurationMs = regularDuration,
+                        overtimeDurationMs = overtimeDuration,
+                        nightShiftDurationMs = nightDuration,
+                        templateId = templateId,
+                        note = note
                     )
                 } catch (e: Exception) {
                     null
@@ -237,7 +317,21 @@ class LocalVardiyaRepository(
                 escapeField(c.breakMinutes.toString()),
                 escapeField(c.deductBreakFromSalary.toString()),
                 escapeField(c.currencySymbol),
-                escapeField(c.currencyCode)
+                escapeField(c.currencyCode),
+                escapeField(c.overtimeMultiplier.toPlainString()),
+                escapeField(c.isOvertimeEnabled.toString()),
+                escapeField(c.nightDifferentialRate.toPlainString()),
+                escapeField(c.isNightDifferentialEnabled.toString()),
+                escapeField(c.nightShiftStartHour.toString()),
+                escapeField(c.nightShiftEndHour.toString()),
+                escapeField(r.baseEarned.toPlainString()),
+                escapeField(r.overtimeEarned.toPlainString()),
+                escapeField(r.nightDifferentialEarned.toPlainString()),
+                escapeField(r.regularDurationMs.toString()),
+                escapeField(r.overtimeDurationMs.toString()),
+                escapeField(r.nightShiftDurationMs.toString()),
+                escapeField(r.templateId ?: ""),
+                escapeField(r.note ?: "")
             ).joinToString(FIELD_DELIMITER)
         }
 
@@ -256,6 +350,12 @@ class LocalVardiyaRepository(
         private const val KEY_SALARY_DEDUCT_BREAK = "salary_deduct_break"
         private const val KEY_SALARY_CURRENCY = "salary_currency"
         private const val KEY_SALARY_CURRENCY_CODE = "salary_currency_code"
+        private const val KEY_SALARY_OVERTIME_MULTIPLIER = "salary_overtime_multiplier"
+        private const val KEY_SALARY_IS_OVERTIME_ENABLED = "salary_is_overtime_enabled"
+        private const val KEY_SALARY_NIGHT_DIFF_RATE = "salary_night_diff_rate"
+        private const val KEY_SALARY_IS_NIGHT_DIFF_ENABLED = "salary_is_night_diff_enabled"
+        private const val KEY_SALARY_NIGHT_START_HOUR = "salary_night_start_hour"
+        private const val KEY_SALARY_NIGHT_END_HOUR = "salary_night_end_hour"
 
         private const val KEY_SHIFT_ID = "shift_id"
         private const val KEY_SHIFT_STATE = "shift_state"
@@ -267,6 +367,9 @@ class LocalVardiyaRepository(
         private const val KEY_SHIFT_PAUSE_EPOCH = "shift_pause_epoch"
         private const val KEY_SHIFT_FINISH_EPOCH = "shift_finish_epoch"
         private const val KEY_SHIFT_EARNED_FINISHED = "shift_earned_finished"
+        private const val KEY_SHIFT_TEMPLATE_ID = "shift_template_id"
+        private const val KEY_SHIFT_NOTE = "shift_note"
+        private const val KEY_SHIFT_BREAKS = "shift_breaks"
 
         private const val KEY_SHIFT_HISTORY_LIST = "shift_history_list"
         private const val RECORD_DELIMITER = "###REC###"
@@ -295,6 +398,45 @@ class LocalVardiyaRepository(
                 }
             }
             return sb.toString()
+        }
+
+        internal fun serializeBreaks(breaks: List<BreakRecord>): String {
+            if (breaks.isEmpty()) return ""
+            return breaks.joinToString(";") { b ->
+                listOf(
+                    escapeField(b.id),
+                    b.startEpochMillis.toString(),
+                    (b.endEpochMillis ?: -1L).toString(),
+                    b.isDeductedFromSalary.toString(),
+                    escapeField(b.note ?: "")
+                ).joinToString(",")
+            }
+        }
+
+        internal fun deserializeBreaks(raw: String): List<BreakRecord> {
+            if (raw.isBlank()) return emptyList()
+            return raw.split(";").mapNotNull { entry ->
+                val tokens = entry.split(",")
+                if (tokens.size >= 4) {
+                    try {
+                        val id = unescapeField(tokens[0])
+                        val start = tokens[1].toLong()
+                        val endRaw = tokens[2].toLong()
+                        val end = if (endRaw >= 0L) endRaw else null
+                        val deducted = tokens[3].toBoolean()
+                        val note = if (tokens.size > 4) unescapeField(tokens[4]).takeIf { it.isNotBlank() } else null
+                        BreakRecord(
+                            id = id,
+                            startEpochMillis = start,
+                            endEpochMillis = end,
+                            isDeductedFromSalary = deducted,
+                            note = note
+                        )
+                    } catch (e: Exception) {
+                        null
+                    }
+                } else null
+            }
         }
     }
 }

@@ -21,5 +21,14 @@ data class CompletedShiftRecord(
     val finishEpochMillis: Long,
     val salaryConfigSnapshot: SalaryConfiguration = SalaryConfiguration(),
     val currencySymbol: String = salaryConfigSnapshot.currencySymbol,
-    val currencyCode: String = salaryConfigSnapshot.currencyCode
+    val currencyCode: String = salaryConfigSnapshot.currencyCode,
+    val baseEarned: BigDecimal = totalEarned,
+    val overtimeEarned: BigDecimal = BigDecimal.ZERO,
+    val nightDifferentialEarned: BigDecimal = BigDecimal.ZERO,
+    val regularDurationMs: Long = activeDurationMs,
+    val overtimeDurationMs: Long = 0L,
+    val nightShiftDurationMs: Long = 0L,
+    val templateId: String? = null,
+    val note: String? = null,
+    val breaks: List<BreakRecord> = emptyList()
 )

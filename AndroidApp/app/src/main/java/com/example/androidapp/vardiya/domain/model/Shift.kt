@@ -19,5 +19,8 @@ data class Shift(
     val finishEpochMillis: Long? = null,
     val state: ShiftState = ShiftState.NOT_STARTED,
     val salaryConfig: SalaryConfiguration = SalaryConfiguration(),
-    val totalEarnedWhenFinished: BigDecimal? = null
+    val totalEarnedWhenFinished: BigDecimal? = null,
+    val activeBreaks: List<BreakRecord> = emptyList(),
+    val templateId: String? = null,
+    val note: String? = null
 )

@@ -14,7 +14,13 @@ data class SalaryConfiguration(
     val breakMinutes: Int = 60,
     val deductBreakFromSalary: Boolean = false,
     val currencySymbol: String = "₺",
-    val currencyCode: String = "TRY"
+    val currencyCode: String = "TRY",
+    val overtimeMultiplier: BigDecimal = BigDecimal("1.50"),
+    val isOvertimeEnabled: Boolean = false,
+    val nightDifferentialRate: BigDecimal = BigDecimal("0.15"),
+    val isNightDifferentialEnabled: Boolean = false,
+    val nightShiftStartHour: Int = 20,
+    val nightShiftEndHour: Int = 6
 ) {
     val breakIsPaid: Boolean
         get() = !deductBreakFromSalary
@@ -31,6 +37,18 @@ data class SalaryConfiguration(
             require(breakHours < dailyWorkHours) {
                 "Break duration cannot exceed or equal daily work hours when deducted"
             }
+        }
+        require(overtimeMultiplier >= BigDecimal.ONE) {
+            "Overtime multiplier must be at least 1.0"
+        }
+        require(nightDifferentialRate >= BigDecimal.ZERO) {
+            "Night differential rate cannot be negative"
+        }
+        require(nightShiftStartHour in 0..23) {
+            "Night shift start hour must be between 0 and 23"
+        }
+        require(nightShiftEndHour in 0..23) {
+            "Night shift end hour must be between 0 and 23"
         }
     }
 
@@ -57,6 +75,18 @@ data class SalaryConfiguration(
             val totalMonthlyHours = BigDecimal(monthlyWorkDays).multiply(dailyPaidHours)
             return monthlySalary.divide(totalMonthlyHours, 16, RoundingMode.HALF_UP)
         }
+
+    /**
+     * Overtime hourly earning rate (hourlyRate * overtimeMultiplier).
+     */
+    val overtimeHourlyRate: BigDecimal
+        get() = hourlyRate.multiply(overtimeMultiplier)
+
+    /**
+     * Night differential hourly supplement (hourlyRate * nightDifferentialRate).
+     */
+    val nightDifferentialHourlyRate: BigDecimal
+        get() = hourlyRate.multiply(nightDifferentialRate)
 
     /**
      * Per-minute earning rate in BigDecimal (Scale 16).
