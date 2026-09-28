@@ -90,6 +90,7 @@ class VardiyaViewModelHardeningTest {
 
     @After
     fun tearDown() {
+        viewModel.stopTicker()
         Dispatchers.resetMain()
     }
 
@@ -111,6 +112,7 @@ class VardiyaViewModelHardeningTest {
         viewModel.clearError()
         runCurrent()
         assertNull(viewModel.uiState.value.errorMessage)
+        viewModel.stopTicker()
     }
 
     @Test
@@ -179,6 +181,7 @@ class VardiyaViewModelHardeningTest {
             finalState.shiftState == ShiftState.FINISHED ||
             finalState.shiftState == ShiftState.NOT_STARTED
         )
+        viewModel.stopTicker()
     }
 
     @Test

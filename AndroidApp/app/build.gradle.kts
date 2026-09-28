@@ -16,9 +16,34 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        create("release") {
+            val storeFilePath = providers.gradleProperty("VARDIYA_RELEASE_STORE_FILE")
+                .orElse(providers.environmentVariable("VARDIYA_RELEASE_STORE_FILE"))
+                .orNull
+            val storePasswordProp = providers.gradleProperty("VARDIYA_RELEASE_STORE_PASSWORD")
+                .orElse(providers.environmentVariable("VARDIYA_RELEASE_STORE_PASSWORD"))
+                .orNull
+            val keyAliasProp = providers.gradleProperty("VARDIYA_RELEASE_KEY_ALIAS")
+                .orElse(providers.environmentVariable("VARDIYA_RELEASE_KEY_ALIAS"))
+                .orNull
+            val keyPasswordProp = providers.gradleProperty("VARDIYA_RELEASE_KEY_PASSWORD")
+                .orElse(providers.environmentVariable("VARDIYA_RELEASE_KEY_PASSWORD"))
+                .orNull
+
+            if (storeFilePath != null && file(storeFilePath).exists() && storePasswordProp != null && keyAliasProp != null && keyPasswordProp != null) {
+                storeFile = file(storeFilePath)
+                storePassword = storePasswordProp
+                keyAlias = keyAliasProp
+                keyPassword = keyPasswordProp
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("release")
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
