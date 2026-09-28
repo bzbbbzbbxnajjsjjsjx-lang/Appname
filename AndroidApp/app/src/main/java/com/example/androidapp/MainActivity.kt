@@ -15,7 +15,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import com.example.androidapp.theme.AndroidAppTheme
 import com.example.androidapp.ui.CalculatorScreen
-import com.example.androidapp.vardiya.ui.VardiyaScreen
+import com.example.androidapp.vardiya.ui.VardiyaAppScaffold
 
 enum class AppDestination {
     VARDIYA,
@@ -38,7 +38,7 @@ class MainActivity : ComponentActivity() {
                 Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     when (currentDestination) {
                         AppDestination.VARDIYA -> {
-                            VardiyaScreen(
+                            VardiyaAppScaffold(
                                 onNavigateToCalculator = { currentDestination = AppDestination.CALCULATOR }
                             )
                         }
