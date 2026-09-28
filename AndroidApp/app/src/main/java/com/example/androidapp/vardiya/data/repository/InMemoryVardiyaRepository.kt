@@ -38,4 +38,12 @@ class InMemoryVardiyaRepository(
     override fun clearShiftHistory() {
         history.clear()
     }
+
+    private var dynamicColor: Boolean = true
+
+    override fun isDynamicColorEnabled(): Boolean = dynamicColor
+
+    override fun setDynamicColorEnabled(enabled: Boolean) {
+        dynamicColor = enabled
+    }
 }

@@ -15,6 +15,9 @@ sealed class SalaryValidationResult {
         WORK_DAYS,
         WORK_HOURS,
         BREAK_MINUTES,
+        OVERTIME_MULTIPLIER,
+        NIGHT_DIFFERENTIAL_RATE,
+        NIGHT_SHIFT_HOURS,
         GENERAL
     }
 }
@@ -31,7 +34,11 @@ object SalaryConfigValidator {
         breakMinutesText: String,
         deductBreak: Boolean,
         currencySymbol: String = "₺",
-        currencyCode: String = "TRY"
+        currencyCode: String = "TRY",
+        overtimeMultiplierText: String = "1.50",
+        nightDifferentialRateText: String = "0.15",
+        nightShiftStartHour: Int = 20,
+        nightShiftEndHour: Int = 6
     ): SalaryValidationResult {
         // 1. Validate Monthly Salary
         val cleanSalary = salaryText.replace(",", ".").trim()
@@ -121,6 +128,60 @@ object SalaryConfigValidator {
             )
         }
 
+        // 5. Validate Overtime Multiplier
+        val cleanOt = overtimeMultiplierText.replace(",", ".").trim()
+        if (cleanOt.isBlank()) {
+            return SalaryValidationResult.Invalid(
+                SalaryValidationResult.Field.OVERTIME_MULTIPLIER,
+                "Fazla mesai çarpanı boş bırakılamaz."
+            )
+        }
+        val otMultiplier = try {
+            BigDecimal(cleanOt)
+        } catch (e: Exception) {
+            return SalaryValidationResult.Invalid(
+                SalaryValidationResult.Field.OVERTIME_MULTIPLIER,
+                "Geçerli bir fazla mesai çarpanı giriniz."
+            )
+        }
+        if (otMultiplier < BigDecimal.ONE) {
+            return SalaryValidationResult.Invalid(
+                SalaryValidationResult.Field.OVERTIME_MULTIPLIER,
+                "Fazla mesai çarpanı en az 1.0 olmalıdır."
+            )
+        }
+
+        // 6. Validate Night Differential Rate
+        val cleanNight = nightDifferentialRateText.replace(",", ".").trim().removeSuffix("%")
+        if (cleanNight.isBlank()) {
+            return SalaryValidationResult.Invalid(
+                SalaryValidationResult.Field.NIGHT_DIFFERENTIAL_RATE,
+                "Gece farkı oranı boş bırakılamaz."
+            )
+        }
+        val nightRate = try {
+            BigDecimal(cleanNight)
+        } catch (e: Exception) {
+            return SalaryValidationResult.Invalid(
+                SalaryValidationResult.Field.NIGHT_DIFFERENTIAL_RATE,
+                "Gece farkı oranı sayısal olmalıdır."
+            )
+        }
+        if (nightRate < BigDecimal.ZERO) {
+            return SalaryValidationResult.Invalid(
+                SalaryValidationResult.Field.NIGHT_DIFFERENTIAL_RATE,
+                "Gece farkı oranı negatif olamaz."
+            )
+        }
+
+        // 7. Validate Night Shift Hours
+        if (nightShiftStartHour !in 0..23 || nightShiftEndHour !in 0..23) {
+            return SalaryValidationResult.Invalid(
+                SalaryValidationResult.Field.NIGHT_SHIFT_HOURS,
+                "Gece vardiyası saatleri 0 ile 23 arasında olmalıdır."
+            )
+        }
+
         return SalaryValidationResult.Valid
     }
 
@@ -131,7 +192,13 @@ object SalaryConfigValidator {
         breakMinutesText: String,
         deductBreak: Boolean,
         currencySymbol: String = "₺",
-        currencyCode: String = "TRY"
+        currencyCode: String = "TRY",
+        overtimeMultiplierText: String = "1.50",
+        isOvertimeEnabled: Boolean = false,
+        nightDifferentialRateText: String = "0.15",
+        isNightDifferentialEnabled: Boolean = false,
+        nightShiftStartHour: Int = 20,
+        nightShiftEndHour: Int = 6
     ): SalaryConfiguration? {
         val validation = validate(
             salaryText = salaryText,
@@ -140,9 +207,21 @@ object SalaryConfigValidator {
             breakMinutesText = breakMinutesText,
             deductBreak = deductBreak,
             currencySymbol = currencySymbol,
-            currencyCode = currencyCode
+            currencyCode = currencyCode,
+            overtimeMultiplierText = overtimeMultiplierText,
+            nightDifferentialRateText = nightDifferentialRateText,
+            nightShiftStartHour = nightShiftStartHour,
+            nightShiftEndHour = nightShiftEndHour
         )
         if (validation !is SalaryValidationResult.Valid) return null
+
+        val cleanNight = nightDifferentialRateText.replace(",", ".").trim().removeSuffix("%")
+        val parsedNightRate = BigDecimal(cleanNight)
+        val finalNightRate = if (parsedNightRate > BigDecimal.ONE) {
+            parsedNightRate.divide(BigDecimal("100"), 4, java.math.RoundingMode.HALF_UP)
+        } else {
+            parsedNightRate
+        }
 
         return SalaryConfiguration(
             monthlySalary = BigDecimal(salaryText.replace(",", ".").trim()),
@@ -151,7 +230,13 @@ object SalaryConfigValidator {
             breakMinutes = breakMinutesText.trim().toInt(),
             deductBreakFromSalary = deductBreak,
             currencySymbol = currencySymbol,
-            currencyCode = currencyCode
+            currencyCode = currencyCode,
+            overtimeMultiplier = BigDecimal(overtimeMultiplierText.replace(",", ".").trim()),
+            isOvertimeEnabled = isOvertimeEnabled,
+            nightDifferentialRate = finalNightRate,
+            isNightDifferentialEnabled = isNightDifferentialEnabled,
+            nightShiftStartHour = nightShiftStartHour,
+            nightShiftEndHour = nightShiftEndHour
         )
     }
 }

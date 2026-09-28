@@ -37,7 +37,8 @@ data class VardiyaUiState(
     val analyticsPeriod: AnalyticsPeriod = AnalyticsPeriod.WEEKLY,
     val analyticsWeekAnchorMillis: Long = System.currentTimeMillis(),
     val analyticsYear: Int = 2026,
-    val analyticsMonth: Int = 9
+    val analyticsMonth: Int = 9,
+    val isDynamicColorEnabled: Boolean = true
 ) {
     companion object {
         private val turkishSymbols = DecimalFormatSymbols(Locale.forLanguageTag("tr-TR")).apply {

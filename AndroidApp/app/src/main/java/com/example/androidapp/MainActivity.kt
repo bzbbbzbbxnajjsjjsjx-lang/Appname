@@ -8,14 +8,18 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.androidapp.theme.AndroidAppTheme
 import com.example.androidapp.ui.CalculatorScreen
+import com.example.androidapp.vardiya.data.repository.LocalVardiyaRepository
 import com.example.androidapp.vardiya.ui.VardiyaAppScaffold
+import com.example.androidapp.vardiya.ui.VardiyaViewModel
 
 enum class AppDestination {
     VARDIYA,
@@ -28,7 +32,12 @@ class MainActivity : ComponentActivity() {
 
         enableEdgeToEdge()
         setContent {
-            AndroidAppTheme {
+            val vardiyaViewModel: VardiyaViewModel = viewModel {
+                VardiyaViewModel(LocalVardiyaRepository(this@MainActivity))
+            }
+            val uiState by vardiyaViewModel.uiState.collectAsState()
+
+            AndroidAppTheme(dynamicColor = uiState.isDynamicColorEnabled) {
                 var currentDestination by remember { mutableStateOf(AppDestination.VARDIYA) }
 
                 BackHandler(enabled = currentDestination == AppDestination.CALCULATOR) {
@@ -39,6 +48,7 @@ class MainActivity : ComponentActivity() {
                     when (currentDestination) {
                         AppDestination.VARDIYA -> {
                             VardiyaAppScaffold(
+                                viewModel = vardiyaViewModel,
                                 onNavigateToCalculator = { currentDestination = AppDestination.CALCULATOR }
                             )
                         }

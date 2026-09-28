@@ -123,4 +123,156 @@ class SalaryConfigValidatorTest {
         result = SalaryConfigValidator.validate("28000", "22", "8", "45", false)
         assertTrue(result is SalaryValidationResult.Valid)
     }
+
+    @Test
+    fun testOvertimeMultiplierValidation() {
+        // Multiplier less than 1.0 rejected
+        var result = SalaryConfigValidator.validate(
+            "28000", "22", "8", "60", false,
+            overtimeMultiplierText = "0.95"
+        )
+        assertTrue(result is SalaryValidationResult.Invalid)
+        assertEquals(SalaryValidationResult.Field.OVERTIME_MULTIPLIER, (result as SalaryValidationResult.Invalid).field)
+
+        // Negative multiplier rejected
+        result = SalaryConfigValidator.validate(
+            "28000", "22", "8", "60", false,
+            overtimeMultiplierText = "-1.50"
+        )
+        assertTrue(result is SalaryValidationResult.Invalid)
+        assertEquals(SalaryValidationResult.Field.OVERTIME_MULTIPLIER, (result as SalaryValidationResult.Invalid).field)
+
+        // Blank multiplier rejected
+        result = SalaryConfigValidator.validate(
+            "28000", "22", "8", "60", false,
+            overtimeMultiplierText = "  "
+        )
+        assertTrue(result is SalaryValidationResult.Invalid)
+
+        // Non-numeric multiplier rejected
+        result = SalaryConfigValidator.validate(
+            "28000", "22", "8", "60", false,
+            overtimeMultiplierText = "abc"
+        )
+        assertTrue(result is SalaryValidationResult.Invalid)
+
+        // Multiplier >= 1.0 accepted (e.g. 1.0, 1.25, 1.50, 2.0)
+        result = SalaryConfigValidator.validate(
+            "28000", "22", "8", "60", false,
+            overtimeMultiplierText = "1.0"
+        )
+        assertTrue(result is SalaryValidationResult.Valid)
+
+        result = SalaryConfigValidator.validate(
+            "28000", "22", "8", "60", false,
+            overtimeMultiplierText = "1,75"
+        )
+        assertTrue(result is SalaryValidationResult.Valid)
+    }
+
+    @Test
+    fun testNightDifferentialRateValidation() {
+        // Negative rate rejected
+        var result = SalaryConfigValidator.validate(
+            "28000", "22", "8", "60", false,
+            nightDifferentialRateText = "-0.10"
+        )
+        assertTrue(result is SalaryValidationResult.Invalid)
+        assertEquals(SalaryValidationResult.Field.NIGHT_DIFFERENTIAL_RATE, (result as SalaryValidationResult.Invalid).field)
+
+        // Blank rate rejected
+        result = SalaryConfigValidator.validate(
+            "28000", "22", "8", "60", false,
+            nightDifferentialRateText = ""
+        )
+        assertTrue(result is SalaryValidationResult.Invalid)
+
+        // Non-numeric rate rejected
+        result = SalaryConfigValidator.validate(
+            "28000", "22", "8", "60", false,
+            nightDifferentialRateText = "xyz"
+        )
+        assertTrue(result is SalaryValidationResult.Invalid)
+
+        // Zero rate accepted
+        result = SalaryConfigValidator.validate(
+            "28000", "22", "8", "60", false,
+            nightDifferentialRateText = "0.0"
+        )
+        assertTrue(result is SalaryValidationResult.Valid)
+
+        // Decimal and percent rates accepted
+        result = SalaryConfigValidator.validate(
+            "28000", "22", "8", "60", false,
+            nightDifferentialRateText = "0,15"
+        )
+        assertTrue(result is SalaryValidationResult.Valid)
+
+        result = SalaryConfigValidator.validate(
+            "28000", "22", "8", "60", false,
+            nightDifferentialRateText = "15%"
+        )
+        assertTrue(result is SalaryValidationResult.Valid)
+    }
+
+    @Test
+    fun testNightShiftHoursValidation() {
+        // Out of bounds start hour
+        var result = SalaryConfigValidator.validate(
+            "28000", "22", "8", "60", false,
+            nightShiftStartHour = -1
+        )
+        assertTrue(result is SalaryValidationResult.Invalid)
+        assertEquals(SalaryValidationResult.Field.NIGHT_SHIFT_HOURS, (result as SalaryValidationResult.Invalid).field)
+
+        result = SalaryConfigValidator.validate(
+            "28000", "22", "8", "60", false,
+            nightShiftStartHour = 24
+        )
+        assertTrue(result is SalaryValidationResult.Invalid)
+
+        // Out of bounds end hour
+        result = SalaryConfigValidator.validate(
+            "28000", "22", "8", "60", false,
+            nightShiftEndHour = 25
+        )
+        assertTrue(result is SalaryValidationResult.Invalid)
+
+        // Boundary values (0 and 23)
+        result = SalaryConfigValidator.validate(
+            "28000", "22", "8", "60", false,
+            nightShiftStartHour = 0,
+            nightShiftEndHour = 23
+        )
+        assertTrue(result is SalaryValidationResult.Valid)
+    }
+
+    @Test
+    fun testParseOrNullWithPhaseHFeatures() {
+        val parsed = SalaryConfigValidator.parseOrNull(
+            salaryText = "35000",
+            workDaysText = "20",
+            workHoursText = "7.5",
+            breakMinutesText = "45",
+            deductBreak = true,
+            overtimeMultiplierText = "1.75",
+            isOvertimeEnabled = true,
+            nightDifferentialRateText = "20%",
+            isNightDifferentialEnabled = true,
+            nightShiftStartHour = 21,
+            nightShiftEndHour = 7
+        )
+        assertNotNull(parsed)
+        assertEquals(BigDecimal("35000"), parsed?.monthlySalary)
+        assertEquals(20, parsed?.monthlyWorkDays)
+        assertEquals(BigDecimal("7.5"), parsed?.dailyWorkHours)
+        assertEquals(45, parsed?.breakMinutes)
+        assertEquals(true, parsed?.deductBreakFromSalary)
+        assertEquals(BigDecimal("1.75"), parsed?.overtimeMultiplier)
+        assertEquals(true, parsed?.isOvertimeEnabled)
+        assertEquals(BigDecimal("0.2000"), parsed?.nightDifferentialRate)
+        assertEquals(true, parsed?.isNightDifferentialEnabled)
+        assertEquals(21, parsed?.nightShiftStartHour)
+        assertEquals(7, parsed?.nightShiftEndHour)
+    }
 }

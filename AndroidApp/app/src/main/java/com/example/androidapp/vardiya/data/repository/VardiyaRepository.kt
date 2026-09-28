@@ -19,6 +19,9 @@ interface VardiyaRepository {
     fun getShiftHistory(): List<CompletedShiftRecord>
     fun addShiftToHistory(record: CompletedShiftRecord)
     fun clearShiftHistory()
+
+    fun isDynamicColorEnabled(): Boolean = true
+    fun setDynamicColorEnabled(enabled: Boolean) {}
 }
 
 /**
@@ -342,7 +345,16 @@ class LocalVardiyaRepository(
         prefs.edit().remove(KEY_SHIFT_HISTORY_LIST).apply()
     }
 
+    override fun isDynamicColorEnabled(): Boolean {
+        return prefs.getBoolean(KEY_DYNAMIC_COLOR, true)
+    }
+
+    override fun setDynamicColorEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_DYNAMIC_COLOR, enabled).apply()
+    }
+
     companion object {
+        private const val KEY_DYNAMIC_COLOR = "dynamic_color"
         private const val KEY_SALARY_MONTHLY = "salary_monthly"
         private const val KEY_SALARY_DAYS = "salary_days"
         private const val KEY_SALARY_HOURS = "salary_hours"

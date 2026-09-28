@@ -64,12 +64,17 @@ class VardiyaViewModel(
         } catch (e: Exception) {
             emptyList()
         }
+        val isDynamic = try {
+            repository.isDynamicColorEnabled()
+        } catch (e: Exception) {
+            true
+        }
 
         if (persistedShift != null && persistedShift.state != ShiftState.NOT_STARTED) {
             val nowElapsed = timeProvider.elapsedRealtimeMillis()
             val nowEpoch = timeProvider.currentEpochMillis()
             val activeMs = calculator.calculateActiveDurationMs(persistedShift, nowElapsed, nowEpoch)
-            val currentEarnings = calculator.calculateEarnings(persistedShift, activeMs)
+            val currentEarnings = calculator.calculateEarnings(persistedShift, activeMs, nowEpoch)
 
             _uiState.update {
                 it.copy(
@@ -78,7 +83,8 @@ class VardiyaViewModel(
                     earnings = currentEarnings,
                     currentShift = persistedShift,
                     history = historyList,
-                    selectedTemplateId = persistedShift.templateId
+                    selectedTemplateId = persistedShift.templateId,
+                    isDynamicColorEnabled = isDynamic
                 )
             }
 
@@ -94,7 +100,8 @@ class VardiyaViewModel(
                     salaryConfig = config,
                     earnings = baselineEarnings,
                     currentShift = null,
-                    history = historyList
+                    history = historyList,
+                    isDynamicColorEnabled = isDynamic
                 )
             }
         }
@@ -409,9 +416,15 @@ class VardiyaViewModel(
                     }
                 }
 
-                val activeDurationMs = _uiState.value.earnings.activeDurationMs
+                val nowElapsed = timeProvider.elapsedRealtimeMillis()
+                val nowEpoch = timeProvider.currentEpochMillis()
+                val activeDurationMs = if (updatedShift != null) {
+                    calculator.calculateActiveDurationMs(updatedShift, nowElapsed, nowEpoch)
+                } else {
+                    _uiState.value.earnings.activeDurationMs
+                }
                 val dummyOrCurrentShift = updatedShift ?: Shift(salaryConfig = newConfig)
-                val updatedEarnings = calculator.calculateEarnings(dummyOrCurrentShift, activeDurationMs)
+                val updatedEarnings = calculator.calculateEarnings(dummyOrCurrentShift, activeDurationMs, nowEpoch)
 
                 _uiState.update {
                     it.copy(
@@ -423,6 +436,15 @@ class VardiyaViewModel(
                 }
             }
         }
+    }
+
+    fun setDynamicColorEnabled(enabled: Boolean) {
+        try {
+            repository.setDynamicColorEnabled(enabled)
+        } catch (e: Exception) {
+            _uiState.update { it.copy(errorMessage = "Tema tercihi kaydedilemedi: ${e.localizedMessage ?: e.message}") }
+        }
+        _uiState.update { it.copy(isDynamicColorEnabled = enabled) }
     }
 
     fun openSetup() {
