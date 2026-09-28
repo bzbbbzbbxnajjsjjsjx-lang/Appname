@@ -1,10 +1,12 @@
 package com.example.androidapp.vardiya.ui
 
+import com.example.androidapp.vardiya.domain.model.BreakRecord
 import com.example.androidapp.vardiya.domain.model.CompletedShiftRecord
 import com.example.androidapp.vardiya.domain.model.SalaryConfiguration
 import com.example.androidapp.vardiya.domain.model.Shift
 import com.example.androidapp.vardiya.domain.model.ShiftEarnings
 import com.example.androidapp.vardiya.domain.model.ShiftState
+import com.example.androidapp.vardiya.domain.model.ShiftTemplate
 import java.math.RoundingMode
 import java.text.DecimalFormat
 import java.text.DecimalFormatSymbols
@@ -21,6 +23,10 @@ data class VardiyaUiState(
     val history: List<CompletedShiftRecord> = emptyList(),
     val isSetupVisible: Boolean = false,
     val isHistoryVisible: Boolean = false,
+    val isTemplatePickerVisible: Boolean = false,
+    val isBreakSheetVisible: Boolean = false,
+    val availableTemplates: List<ShiftTemplate> = ShiftTemplate.PRESETS,
+    val selectedTemplateId: String? = null,
     val selectedHistoryRecord: CompletedShiftRecord? = null,
     val errorMessage: String? = null
 ) {
@@ -31,6 +37,18 @@ data class VardiyaUiState(
         }
         private val moneyFormat = DecimalFormat("#,##0", turkishSymbols)
     }
+
+    val selectedTemplate: ShiftTemplate?
+        get() {
+            val id = selectedTemplateId ?: currentShift?.templateId
+            return availableTemplates.firstOrNull { it.id == id }
+        }
+
+    val currentShiftBreaks: List<BreakRecord>
+        get() = currentShift?.activeBreaks ?: emptyList()
+
+    val ongoingBreak: BreakRecord?
+        get() = currentShift?.activeBreaks?.firstOrNull { it.isOngoing }
 
     val isBreakActive: Boolean
         get() = currentShift?.activeBreaks?.any { it.isOngoing } == true

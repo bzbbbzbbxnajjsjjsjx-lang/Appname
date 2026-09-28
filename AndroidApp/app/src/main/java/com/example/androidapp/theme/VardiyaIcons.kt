@@ -359,4 +359,76 @@ object VardiyaIcons {
             close()
         }.build()
     }
+
+    val Check: ImageVector by lazy {
+        ImageVector.Builder(
+            name = "Check",
+            defaultWidth = 24.dp,
+            defaultHeight = 24.dp,
+            viewportWidth = 24f,
+            viewportHeight = 24f
+        ).path(fill = SolidColor(Color.Black)) {
+            moveTo(9f, 16.17f)
+            lineTo(4.83f, 12f)
+            lineToRelative(-1.42f, 1.41f)
+            lineTo(9f, 19f)
+            lineTo(21f, 7f)
+            lineToRelative(-1.41f, -1.41f)
+            close()
+        }.build()
+    }
+
+    val Close: ImageVector by lazy {
+        ImageVector.Builder(
+            name = "Close",
+            defaultWidth = 24.dp,
+            defaultHeight = 24.dp,
+            viewportWidth = 24f,
+            viewportHeight = 24f
+        ).path(fill = SolidColor(Color.Black)) {
+            moveTo(19f, 6.41f)
+            lineTo(17.59f, 5f)
+            lineTo(12f, 10.59f)
+            lineTo(6.41f, 5f)
+            lineTo(5f, 6.41f)
+            lineTo(10.59f, 12f)
+            lineTo(5f, 17.59f)
+            lineTo(6.41f, 19f)
+            lineTo(12f, 13.41f)
+            lineTo(17.59f, 19f)
+            lineTo(19f, 17.59f)
+            lineTo(13.41f, 12f)
+            close()
+        }.build()
+    }
+
+    val Schedule: ImageVector by lazy {
+        ImageVector.Builder(
+            name = "Schedule",
+            defaultWidth = 24.dp,
+            defaultHeight = 24.dp,
+            viewportWidth = 24f,
+            viewportHeight = 24f
+        ).path(fill = SolidColor(Color.Black)) {
+            moveTo(11.99f, 2f)
+            curveTo(6.47f, 2f, 2f, 6.48f, 2f, 12f)
+            reflectiveCurveToRelative(4.47f, 10f, 9.99f, 10f)
+            curveTo(17.52f, 22f, 22f, 17.52f, 22f, 12f)
+            reflectiveCurveTo(17.52f, 2f, 11.99f, 2f)
+            close()
+            moveTo(12f, 20f)
+            curveToRelative(-4.42f, 0f, -8f, -3.58f, -8f, -8f)
+            reflectiveCurveToRelative(3.58f, -8f, 8f, -8f)
+            reflectiveCurveToRelative(8f, 3.58f, 8f, 8f)
+            reflectiveCurveToRelative(-3.58f, 8f, -8f, 8f)
+            close()
+            moveTo(12.5f, 7f)
+            horizontalLineTo(11f)
+            verticalLineToRelative(6f)
+            lineToRelative(5.25f, 3.15f)
+            lineToRelative(0.75f, -1.23f)
+            lineToRelative(-4.5f, -2.67f)
+            close()
+        }.build()
+    }
 }

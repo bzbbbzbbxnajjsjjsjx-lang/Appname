@@ -9,6 +9,7 @@ import com.example.androidapp.vardiya.domain.model.CompletedShiftRecord
 import com.example.androidapp.vardiya.domain.model.SalaryConfiguration
 import com.example.androidapp.vardiya.domain.model.Shift
 import com.example.androidapp.vardiya.domain.model.ShiftState
+import com.example.androidapp.vardiya.domain.model.ShiftTemplate
 import com.example.androidapp.vardiya.domain.time.DefaultTimeProvider
 import com.example.androidapp.vardiya.domain.time.TimeProvider
 import kotlinx.coroutines.CoroutineDispatcher
@@ -74,7 +75,8 @@ class VardiyaViewModel(
                     salaryConfig = config,
                     earnings = currentEarnings,
                     currentShift = persistedShift,
-                    history = historyList
+                    history = historyList,
+                    selectedTemplateId = persistedShift.templateId
                 )
             }
 
@@ -114,7 +116,8 @@ class VardiyaViewModel(
                     accumulatedActiveElapsedMs = 0L,
                     lastResumeElapsedRealtime = nowElapsed,
                     state = ShiftState.RUNNING,
-                    salaryConfig = config
+                    salaryConfig = config,
+                    templateId = _uiState.value.selectedTemplateId
                 )
 
                 try {
@@ -424,6 +427,91 @@ class VardiyaViewModel(
 
     fun closeHistory() {
         _uiState.update { it.copy(isHistoryVisible = false, selectedHistoryRecord = null) }
+    }
+
+    fun openTemplatePicker() {
+        _uiState.update { it.copy(isTemplatePickerVisible = true) }
+    }
+
+    fun closeTemplatePicker() {
+        _uiState.update { it.copy(isTemplatePickerVisible = false) }
+    }
+
+    fun applyShiftTemplate(template: ShiftTemplate) {
+        viewModelScope.launch(dispatcher) {
+            actionMutex.withLock {
+                val currentConfig = _uiState.value.salaryConfig
+                val updatedConfig = currentConfig.copy(
+                    dailyWorkHours = template.durationHours,
+                    breakMinutes = template.breakMinutes,
+                    deductBreakFromSalary = template.deductBreakFromSalary
+                )
+
+                try {
+                    repository.saveSalaryConfiguration(updatedConfig)
+                } catch (e: Exception) {
+                    _uiState.update { it.copy(errorMessage = "Şablon ayarları kaydedilemedi: ${e.localizedMessage ?: e.message}") }
+                }
+
+                val current = _uiState.value.currentShift
+                val updatedShift = current?.copy(
+                    salaryConfig = updatedConfig,
+                    templateId = template.id
+                )
+                if (updatedShift != null) {
+                    try {
+                        repository.saveActiveShift(updatedShift)
+                    } catch (e: Exception) {
+                        _uiState.update { it.copy(errorMessage = "Aktif vardiya şablonu kaydedilemedi: ${e.localizedMessage ?: e.message}") }
+                    }
+                }
+
+                val activeMs = _uiState.value.earnings.activeDurationMs
+                val shiftForCalc = updatedShift ?: Shift(salaryConfig = updatedConfig, templateId = template.id)
+                val updatedEarnings = calculator.calculateEarnings(shiftForCalc, activeMs)
+
+                _uiState.update {
+                    it.copy(
+                        selectedTemplateId = template.id,
+                        salaryConfig = updatedConfig,
+                        currentShift = updatedShift,
+                        earnings = updatedEarnings,
+                        isTemplatePickerVisible = false
+                    )
+                }
+            }
+        }
+    }
+
+    fun clearSelectedTemplate() {
+        viewModelScope.launch(dispatcher) {
+            actionMutex.withLock {
+                val current = _uiState.value.currentShift
+                val updatedShift = current?.copy(templateId = null)
+                if (updatedShift != null) {
+                    try {
+                        repository.saveActiveShift(updatedShift)
+                    } catch (e: Exception) {
+                        _uiState.update { it.copy(errorMessage = "Şablon temizleme kaydedilemedi: ${e.localizedMessage ?: e.message}") }
+                    }
+                }
+                _uiState.update {
+                    it.copy(
+                        selectedTemplateId = null,
+                        currentShift = updatedShift,
+                        isTemplatePickerVisible = false
+                    )
+                }
+            }
+        }
+    }
+
+    fun openBreakSheet() {
+        _uiState.update { it.copy(isBreakSheetVisible = true) }
+    }
+
+    fun closeBreakSheet() {
+        _uiState.update { it.copy(isBreakSheetVisible = false) }
     }
 
     fun selectHistoryRecord(record: CompletedShiftRecord?) {

@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -52,9 +53,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.ui.graphics.Color
 import com.example.androidapp.vardiya.data.repository.LocalVardiyaRepository
 import com.example.androidapp.vardiya.domain.model.ShiftState
+import com.example.androidapp.vardiya.ui.components.BreakManagementSheet
 import com.example.androidapp.vardiya.ui.components.CircularWavyProgressHero
+import com.example.androidapp.vardiya.ui.components.ShiftTemplatePicker
 import com.example.androidapp.vardiya.ui.components.VardiyaControlBar
 import com.example.androidapp.vardiya.ui.components.VardiyaHistoryDialog
 import com.example.androidapp.vardiya.ui.components.VardiyaSetupDialog
@@ -88,6 +93,15 @@ fun VardiyaScreen(
                     )
                 },
                 actions = {
+                    TextButton(
+                        onClick = {
+                            view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                            viewModel.openTemplatePicker()
+                        }
+                    ) {
+                        Text("Şablon", style = MaterialTheme.typography.labelLarge)
+                    }
+
                     TextButton(
                         onClick = {
                             view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
@@ -133,12 +147,65 @@ fun VardiyaScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.SpaceBetween
         ) {
-            // Top: State Badge
+            // Top: State Badge (clickable for break management)
             StateBadge(
                 shiftState = uiState.shiftState,
                 badgeText = uiState.stateBadgeText,
-                isBreakActive = uiState.isBreakActive
+                isBreakActive = uiState.isBreakActive,
+                onClick = if (uiState.isBreakActive || uiState.shiftState == ShiftState.RUNNING) {
+                    {
+                        view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                        viewModel.openBreakSheet()
+                    }
+                } else null
             )
+
+            // Template Badge / Quick Picker
+            if (uiState.selectedTemplate != null) {
+                Surface(
+                    onClick = {
+                        view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                        viewModel.openTemplatePicker()
+                    },
+                    shape = RoundedCornerShape(percent = 50),
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(8.dp)
+                                .clip(CircleShape)
+                                .background(Color(uiState.selectedTemplate!!.colorTag))
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = uiState.selectedTemplate!!.name,
+                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
+            } else if (uiState.shiftState == ShiftState.NOT_STARTED) {
+                Surface(
+                    onClick = {
+                        view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                        viewModel.openTemplatePicker()
+                    },
+                    shape = RoundedCornerShape(percent = 50),
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.6f)
+                ) {
+                    Text(
+                        text = "+ Şablon Seç",
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                    )
+                }
+            }
 
             // Middle: Visual Hero with Circular Wavy Progress Indicator
             Column(
@@ -244,7 +311,42 @@ fun VardiyaScreen(
         }
     }
 
-    // Dialogs
+    // Dialogs & Bottom Sheets
+    if (uiState.isTemplatePickerVisible) {
+        ShiftTemplatePicker(
+            availableTemplates = uiState.availableTemplates,
+            selectedTemplateId = uiState.selectedTemplateId,
+            onSelectTemplate = {
+                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                viewModel.applyShiftTemplate(it)
+            },
+            onClearTemplate = {
+                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                viewModel.clearSelectedTemplate()
+            },
+            onDismiss = { viewModel.closeTemplatePicker() }
+        )
+    }
+
+    if (uiState.isBreakSheetVisible) {
+        BreakManagementSheet(
+            isBreakActive = uiState.isBreakActive,
+            activeBreakDurationFormatted = uiState.activeBreakFormattedDuration,
+            ongoingBreak = uiState.ongoingBreak,
+            breaks = uiState.currentShiftBreaks,
+            isShiftRunning = uiState.shiftState == ShiftState.RUNNING,
+            onStartBreak = { isDeducted, note ->
+                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                viewModel.startBreak(isDeducted, note)
+            },
+            onEndBreak = {
+                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                viewModel.endBreak()
+            },
+            onDismiss = { viewModel.closeBreakSheet() }
+        )
+    }
+
     if (uiState.isSetupVisible) {
         VardiyaSetupDialog(
             initialConfig = uiState.salaryConfig,
@@ -266,7 +368,8 @@ fun VardiyaScreen(
 private fun StateBadge(
     shiftState: ShiftState,
     badgeText: String,
-    isBreakActive: Boolean = false
+    isBreakActive: Boolean = false,
+    onClick: (() -> Unit)? = null
 ) {
     val infiniteTransition = rememberInfiniteTransition(label = "pulse")
     val pulseAlpha by infiniteTransition.animateFloat(
@@ -280,6 +383,8 @@ private fun StateBadge(
     )
 
     Surface(
+        onClick = onClick ?: {},
+        enabled = onClick != null,
         color = when {
             shiftState == ShiftState.RUNNING && isBreakActive -> MaterialTheme.colorScheme.tertiaryContainer
             shiftState == ShiftState.RUNNING -> MaterialTheme.colorScheme.primaryContainer
