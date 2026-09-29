@@ -1,5 +1,7 @@
 package com.example.androidapp.vardiya.ui.components
 
+import android.graphics.Matrix as AndroidMatrix
+import android.graphics.Path as AndroidPath
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
@@ -33,10 +35,13 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathMeasure
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
-import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.asComposePath
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.withTransform
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
@@ -46,6 +51,12 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.min
 import androidx.compose.ui.unit.sp
+import androidx.graphics.shapes.CornerRounding
+import androidx.graphics.shapes.Cubic
+import androidx.graphics.shapes.Morph
+import androidx.graphics.shapes.RoundedPolygon
+import androidx.graphics.shapes.circle
+import androidx.graphics.shapes.star
 import com.example.androidapp.theme.motion.MotionPreference
 import com.example.androidapp.theme.motion.VardiyaTheme
 import com.example.androidapp.theme.motion.contract.DefaultVardiyaHeroMotionContract
@@ -59,6 +70,226 @@ import kotlin.math.min
 import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlinx.coroutines.isActive
+
+/**
+ * Real AndroidX Material 3 Expressive Geometry Engine for [CircularWavyProgressHero].
+ *
+ * Replaces legacy polar trigonometric chord approximations (`sin/cos + lineTo`)
+ * with Google's authentic AndroidX Material 3 Expressive geometry pipeline:
+ *
+ * RoundedPolygon.circle -> RoundedPolygon.star -> Morph -> Morph.asCubics / toPath -> PathMeasure -> drawPath
+ *
+ * ============================================================================
+ * CRITICAL SOURCE-OF-TRUTH SEPARATION:
+ * ============================================================================
+ *
+ * UPSTREAM MATERIAL 3 EXPRESSIVE PRINCIPLES (Google AndroidX):
+ * In `androidx.compose.material3.internal.CircularWavyProgressModifiers` and
+ * `androidx.graphics.shapes`:
+ * - Waves are constructed using rounded star polygons with corner rounding:
+ *   CornerRounding(0.35f * wavelength, smoothing = 0.4f) and innerRounding(0.50f * wavelength).
+ * - Morph smoothly interpolates between a smooth circle and a wavy star polygon via cubic Bézier curves.
+ * - Progress segments are sampled along the contour using PathMeasure.
+ * - Continuous wave travel shifts the sampling window and rotates back by -offsetAngle around the center,
+ *   preserving the 12 o'clock anchor while undulating the waveform.
+ *
+ * VARDIYA DESIGN DECISIONS (Adapted for 295dp Hero & Shift Domain):
+ * - Fixed 12-vertex clock rhythm (WAVE_COUNT = 12), aligning each wave with one of the 12 clock hours.
+ * - Scaled for Vardiya's prominent 295dp Hero bounding box (baseRadius ~110dp).
+ * - Peak wave amplitude parameterized to 7.0.dp (MAX_AMPLITUDE), ensuring the inner-to-outer
+ *   radius ratio (~0.88f) fits comfortably within the Hero without clipping or crowding typography.
+ * - 4.dp air gap preserved between wavy progress head and the smooth circular guide track.
+ * - Zero per-frame allocations during Canvas draw phase via cached RoundedPolygon, Morph, Path,
+ *   and PathMeasure.
+ */
+object CircularWavyHeroGeometry {
+    const val WAVE_COUNT = 12
+    val MAX_AMPLITUDE: Dp = 7.0.dp
+    const val DEFAULT_CORNER_RADIUS_FACTOR = 0.35f
+    const val DEFAULT_INNER_CORNER_RADIUS_FACTOR = 0.50f
+    const val DEFAULT_SMOOTHING = 0.4f
+
+    /**
+     * Resolves the normalized morph factor [0f, 1f] for a given [semanticState].
+     */
+    fun resolveMorphFactor(semanticState: HeroSemanticState): Float {
+        val amplitude = CircularWavyHeroMotion.contract.resolveTargetAmplitude(semanticState)
+        return resolveMorphFactor(amplitude)
+    }
+
+    /**
+     * Resolves the normalized morph factor [0f, 1f] for an animated amplitude in [Dp].
+     */
+    fun resolveMorphFactor(amplitudeDp: Dp): Float =
+        (amplitudeDp / MAX_AMPLITUDE).coerceIn(0f, 1f)
+
+    /**
+     * Creates a circular [RoundedPolygon] with [numVertices] matching the star polygon.
+     */
+    fun createCirclePolygon(
+        radius: Float,
+        centerX: Float = 0f,
+        centerY: Float = 0f,
+        numVertices: Int = WAVE_COUNT
+    ): RoundedPolygon = RoundedPolygon.circle(
+        numVertices = numVertices,
+        radius = radius,
+        centerX = centerX,
+        centerY = centerY
+    )
+
+    /**
+     * Creates a wavy star [RoundedPolygon] adapted for Vardiya's 295dp Hero dimensions.
+     */
+    fun createStarPolygon(
+        baseRadius: Float,
+        maxAmplitude: Float,
+        centerX: Float = 0f,
+        centerY: Float = 0f,
+        numVertices: Int = WAVE_COUNT,
+        cornerRadiusFactor: Float = DEFAULT_CORNER_RADIUS_FACTOR,
+        smoothing: Float = DEFAULT_SMOOTHING,
+        innerCornerRadiusFactor: Float = DEFAULT_INNER_CORNER_RADIUS_FACTOR
+    ): RoundedPolygon {
+        val wavelength = (2.0 * PI * baseRadius / numVertices).toFloat()
+        return RoundedPolygon.star(
+            numVerticesPerRadius = numVertices,
+            radius = baseRadius + maxAmplitude,
+            innerRadius = (baseRadius - maxAmplitude).coerceAtLeast(1f),
+            rounding = CornerRounding(radius = cornerRadiusFactor * wavelength, smoothing = smoothing),
+            innerRounding = CornerRounding(radius = innerCornerRadiusFactor * wavelength),
+            centerX = centerX,
+            centerY = centerY
+        )
+    }
+
+    /**
+     * Creates a [Morph] between the [circle] and [star] polygons.
+     */
+    fun createHeroMorph(
+        circle: RoundedPolygon,
+        star: RoundedPolygon
+    ): Morph = Morph(start = circle, end = star)
+
+    /**
+     * Evaluates sample points along the morphed cubic Bézier curves without touching
+     * Android native graphics APIs, enabling pure JVM deterministic verification.
+     */
+    fun sampleCubicsPoints(
+        cubics: List<Cubic>,
+        samplesPerCubic: Int = 4
+    ): List<Offset> {
+        val result = mutableListOf<Offset>()
+        for (cubic in cubics) {
+            for (step in 0..samplesPerCubic) {
+                val t = step.toFloat() / samplesPerCubic.toFloat()
+                val oneMinusT = 1f - t
+                val x = oneMinusT * oneMinusT * oneMinusT * cubic.anchor0X +
+                    3f * oneMinusT * oneMinusT * t * cubic.control0X +
+                    3f * oneMinusT * t * t * cubic.control1X +
+                    t * t * t * cubic.anchor1X
+                val y = oneMinusT * oneMinusT * oneMinusT * cubic.anchor0Y +
+                    3f * oneMinusT * oneMinusT * t * cubic.control0Y +
+                    3f * oneMinusT * t * t * cubic.control1Y +
+                    t * t * t * cubic.anchor1Y
+                result.add(Offset(x, y))
+            }
+        }
+        return result
+    }
+}
+
+/**
+ * Reusable drawing holder for [CircularWavyProgressHero] to eliminate per-frame allocations.
+ * Reuses polygons, morph, Android and Compose paths, path measures, and matrices.
+ */
+internal class HeroGeometryHolder {
+    var cachedRadius: Float = -1f
+    var cachedAmplitude: Float = -1f
+    var cachedCenterX: Float = -1f
+    var cachedCenterY: Float = -1f
+
+    var circlePolygon: RoundedPolygon? = null
+    var starPolygon: RoundedPolygon? = null
+    var heroMorph: Morph? = null
+
+    val fullAndroidPath = AndroidPath()
+    val fullComposePath = fullAndroidPath.asComposePath()
+    val progressComposePath = Path()
+    val pathMeasure = PathMeasure()
+    val matrix = AndroidMatrix()
+
+    var lastMorphFactor: Float = -1f
+    var lastSingleLoopLength: Float = 0f
+
+    fun ensureMorph(radius: Float, maxAmplitude: Float, centerX: Float, centerY: Float): Morph {
+        if (radius != cachedRadius ||
+            maxAmplitude != cachedAmplitude ||
+            centerX != cachedCenterX ||
+            centerY != cachedCenterY ||
+            heroMorph == null
+        ) {
+            cachedRadius = radius
+            cachedAmplitude = maxAmplitude
+            cachedCenterX = centerX
+            cachedCenterY = centerY
+
+            val circle = CircularWavyHeroGeometry.createCirclePolygon(
+                radius = radius,
+                centerX = centerX,
+                centerY = centerY
+            )
+            val star = CircularWavyHeroGeometry.createStarPolygon(
+                baseRadius = radius,
+                maxAmplitude = maxAmplitude,
+                centerX = centerX,
+                centerY = centerY
+            )
+            circlePolygon = circle
+            starPolygon = star
+            heroMorph = CircularWavyHeroGeometry.createHeroMorph(circle, star)
+            lastMorphFactor = -1f
+        }
+        return heroMorph!!
+    }
+
+    fun updatePath(morph: Morph, morphFactor: Float, centerX: Float, centerY: Float): Float {
+        if (kotlin.math.abs(morphFactor - lastMorphFactor) > 0.0005f || lastMorphFactor < 0f) {
+            lastMorphFactor = morphFactor
+            fullAndroidPath.rewind()
+            val cubics = morph.asCubics(morphFactor)
+            if (cubics.isNotEmpty()) {
+                val first = cubics.first()
+                fullAndroidPath.moveTo(first.anchor0X, first.anchor0Y)
+                for (cubic in cubics) {
+                    fullAndroidPath.cubicTo(
+                        cubic.control0X, cubic.control0Y,
+                        cubic.control1X, cubic.control1Y,
+                        cubic.anchor1X, cubic.anchor1Y
+                    )
+                }
+                // Second continuous loop for seamless traveling wave segment extraction
+                for (cubic in cubics) {
+                    fullAndroidPath.cubicTo(
+                        cubic.control0X, cubic.control0Y,
+                        cubic.control1X, cubic.control1Y,
+                        cubic.anchor1X, cubic.anchor1Y
+                    )
+                }
+                fullAndroidPath.close()
+
+                // Rotate by -75° around center to align anchor 0 (-15°) exactly with 12 o'clock (-90°)
+                matrix.reset()
+                matrix.postRotate(-75f, centerX, centerY)
+                fullAndroidPath.transform(matrix)
+            }
+            pathMeasure.setPath(fullComposePath, forceClosed = true)
+            lastSingleLoopLength = pathMeasure.length / 2f
+        }
+        return lastSingleLoopLength
+    }
+}
+
 
 /**
  * Pure motion mapping functions for [CircularWavyProgressHero].
@@ -243,8 +474,8 @@ fun CircularWavyProgressHero(
     // Track color: visible against surface, creating the expressive wavy guide ring
     val trackColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.85f)
 
-    // Reusable Path to eliminate per-frame allocations during Canvas draw
-    val activePath = remember { Path() }
+    // Reusable geometry cache to eliminate per-frame allocations during Canvas draw
+    val geometryHolder = remember { HeroGeometryHolder() }
 
     BoxWithConstraints(
         modifier = modifier
@@ -270,18 +501,15 @@ fun CircularWavyProgressHero(
             Canvas(modifier = Modifier.fillMaxSize()) {
                 val strokeWidthPx = 10.dp.toPx()
                 val trackStrokeWidthPx = 9.5.dp.toPx()
-                val waveAmplitudePx = animatedAmplitudeDp.toPx()
+                val maxAmplitudePx = CircularWavyHeroGeometry.MAX_AMPLITUDE.toPx()
                 val centerOffset = Offset(size.width / 2f, size.height / 2f)
 
                 // Margin for outer wave peaks + stroke width + safety padding
-                val outerPeakOffset = waveAmplitudePx + (strokeWidthPx / 2f) + 4.dp.toPx()
+                val outerPeakOffset = maxAmplitudePx + (strokeWidthPx / 2f) + 4.dp.toPx()
                 val baseRadius = (min(size.width, size.height) / 2f) - outerPeakOffset
 
                 if (baseRadius <= 0f) return@Canvas
 
-                // 12 waves around 360° (30° per wave cycle, aligning with clock hour marks)
-                val waveFrequency = 12
-                val phase = phaseAccumulator
                 val startAngleRad = -PI / 2.0 // 12 o'clock
                 val fullCircleRad = 2.0 * PI
 
@@ -335,38 +563,67 @@ fun CircularWavyProgressHero(
                     }
                 }
 
-                // 2. Draw the active determinate wavy progress arc
+                // 2. Draw the active determinate wavy progress arc powered by RoundedPolygon + Morph + PathMeasure
                 if (currentProgress > 0.005f) {
-                    val activeSteps = max(24, (currentProgress * 720.0).roundToInt())
-                    activePath.reset()
+                    val morphFactor = CircularWavyHeroGeometry.resolveMorphFactor(animatedAmplitudeDp)
+                    val morph = geometryHolder.ensureMorph(
+                        radius = baseRadius,
+                        maxAmplitude = maxAmplitudePx,
+                        centerX = centerOffset.x,
+                        centerY = centerOffset.y
+                    )
+                    val singleLoopLength = geometryHolder.updatePath(
+                        morph = morph,
+                        morphFactor = morphFactor,
+                        centerX = centerOffset.x,
+                        centerY = centerOffset.y
+                    )
 
-                    for (i in 0..activeSteps) {
-                        val fraction = i.toDouble() / activeSteps.toDouble()
-                        val angle = startAngleRad + fraction * progressSweepRad
-                        val waveOffset = waveAmplitudePx * sin(waveFrequency * angle - phase)
-                        val r = baseRadius + waveOffset
-                        val x = (centerOffset.x + r * cos(angle)).toFloat()
-                        val y = (centerOffset.y + r * sin(angle)).toFloat()
-                        if (i == 0) {
-                            activePath.moveTo(x, y)
+                    if (singleLoopLength > 0f) {
+                        val coercedWaveOffset = if (isWaveActive) {
+                            (phaseAccumulator / (2f * PI.toFloat())) % 1f
                         } else {
-                            activePath.lineTo(x, y)
+                            0f
+                        }
+                        val startStopShift = coercedWaveOffset * singleLoopLength
+                        val pStart = startStopShift
+                        val pStop = (currentProgress * singleLoopLength) + startStopShift
+
+                        geometryHolder.progressComposePath.reset()
+                        geometryHolder.pathMeasure.getSegment(
+                            startDistance = pStart,
+                            stopDistance = pStop,
+                            destination = geometryHolder.progressComposePath,
+                            startWithMoveTo = true
+                        )
+
+                        val offsetAngle = (coercedWaveOffset * 360f) % 360f
+                        if (offsetAngle != 0f) {
+                            withTransform({
+                                rotate(degrees = -offsetAngle, pivot = centerOffset)
+                            }) {
+                                drawPath(
+                                    path = geometryHolder.progressComposePath,
+                                    color = animatedActiveColor,
+                                    style = Stroke(
+                                        width = strokeWidthPx,
+                                        cap = StrokeCap.Round,
+                                        join = StrokeJoin.Round
+                                    )
+                                )
+                            }
+                        } else {
+                            drawPath(
+                                path = geometryHolder.progressComposePath,
+                                color = animatedActiveColor,
+                                style = Stroke(
+                                    width = strokeWidthPx,
+                                    cap = StrokeCap.Round,
+                                    join = StrokeJoin.Round
+                                )
+                            )
                         }
                     }
-
-                    if (currentProgress >= 0.999f) {
-                        activePath.close()
-                    }
-
-                    drawPath(
-                        path = activePath,
-                        color = animatedActiveColor,
-                        style = Stroke(
-                            width = strokeWidthPx,
-                            cap = StrokeCap.Round,
-                            join = StrokeJoin.Round
-                        )
-                    )
                 }
             }
 
