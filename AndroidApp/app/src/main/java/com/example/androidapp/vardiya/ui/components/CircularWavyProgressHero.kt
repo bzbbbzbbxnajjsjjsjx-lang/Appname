@@ -1,13 +1,8 @@
 package com.example.androidapp.vardiya.ui.components
 
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -21,15 +16,22 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.progressSemantics
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
@@ -39,9 +41,12 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.min
 import androidx.compose.ui.unit.sp
+import com.example.androidapp.theme.motion.MotionPreference
+import com.example.androidapp.theme.motion.VardiyaTheme
 import com.example.androidapp.vardiya.domain.model.ShiftState
 import kotlin.math.PI
 import kotlin.math.cos
@@ -49,22 +54,80 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
 import kotlin.math.sin
+import kotlinx.coroutines.isActive
 
 /**
- * Custom Canvas Wavy Progress Hero Indicator modeled after Material 3 Expressive.
+ * Pure motion mapping functions for [CircularWavyProgressHero].
+ * Extracted to allow deterministic unit testing of physical targets, speeds, and accessibility states.
+ */
+object CircularWavyHeroMotion {
+    /**
+     * Resolves the target wave amplitude in [Dp] based on shift state, overtime, and break.
+     * Matches the established Vardiya 3.0.2 production geometry.
+     */
+    fun resolveTargetAmplitude(
+        shiftState: ShiftState,
+        isOvertimeActive: Boolean,
+        isBreakActive: Boolean
+    ): Dp = when {
+        isBreakActive -> 5.0.dp
+        isOvertimeActive -> 7.0.dp
+        shiftState == ShiftState.RUNNING -> 6.0.dp
+        shiftState == ShiftState.PAUSED -> 4.5.dp
+        shiftState == ShiftState.FINISHED -> 5.0.dp
+        else -> 5.0.dp
+    }
+
+    /**
+     * Resolves whether the traveling wave phase animation should actively advance.
+     * ZERO continuous phase animation when NOT_STARTED, PAUSED, FINISHED, on BREAK,
+     * or when [MotionPreference.REDUCED] is active.
+     */
+    fun isWavePhaseActive(
+        shiftState: ShiftState,
+        isBreakActive: Boolean,
+        motionPreference: MotionPreference
+    ): Boolean =
+        motionPreference != MotionPreference.REDUCED &&
+        shiftState == ShiftState.RUNNING &&
+        !isBreakActive
+
+    /**
+     * Resolves the full 360-degree wave cycle duration in milliseconds.
+     */
+    fun resolveWaveCycleDurationMs(isOvertimeActive: Boolean): Long =
+        if (isOvertimeActive) 1800L else 2400L
+
+    /**
+     * Resolves the semantic active hero color for the progress wave and typography.
+     */
+    fun resolveHeroActiveColor(
+        shiftState: ShiftState,
+        isOvertimeActive: Boolean,
+        isBreakActive: Boolean,
+        colorScheme: ColorScheme
+    ): Color = when {
+        shiftState == ShiftState.FINISHED -> colorScheme.secondary
+        shiftState == ShiftState.PAUSED || isBreakActive || isOvertimeActive -> colorScheme.tertiary
+        shiftState == ShiftState.RUNNING -> colorScheme.primary
+        else -> colorScheme.primary
+    }
+}
+
+/**
+ * Custom Canvas Wavy Progress Hero Indicator powered by Material 3 Expressive Motion.
  *
- * NOTE: The official AndroidX Compose Material 3 CircularWavyProgressIndicator API is not available
- * in Material 3 1.4.0 (introduced in 1.5.0-alpha+). In strict compliance with zero unauthorized dependency
- * upgrades, this component provides a dependency-free custom Canvas implementation:
- * - Mathematical sinusoidal wave running along the circular track circumference: r(θ) = R + A * sin(n * θ - φ)
- * - Determinate progress arc smoothly advancing clockwise from 12 o'clock (-90°).
- * - Non-overlapping track and active progress segments: track only renders where progress has not reached.
- * - Smooth circular arc track (düzgün circular arc) along the nominal centerline.
- * - Physical 4.dp gap (CircularIndicatorTrackGapSize) separating active progress head and guide track.
- * - Bold 10.dp active stroke width and 9.5.dp track stroke width, matching Material 3 Expressive visual weight.
- * - Dynamic, traveling wave animation (waveSpeed) running exclusively when shift is RUNNING.
- * - Zero CPU / idle battery consumption when PAUSED, FINISHED, or NOT_STARTED.
- * - Preserves all hero typography, labels, duration, percentage, and accessibility semantics.
+ * Integrated with the Vardiya Motion System:
+ * - Progress advancement: Uses [VardiyaTheme.motionScheme.defaultSpatialSpec] (expressive physics spring).
+ * - Wave amplitude: Settles organically via spatial spring rather than hard-snapping across state changes.
+ * - State colors: Transitions smoothly via [VardiyaTheme.motionScheme.defaultEffectsSpec] (critically damped).
+ * - Phase engine: Runs continuous frame-synchronized traveling wave ONLY while [ShiftState.RUNNING].
+ *   When [ShiftState.PAUSED], freezes in place at its current phase without resetting to zero.
+ * - Idle battery efficiency: ZERO continuous phase animation while NOT_STARTED, PAUSED, on BREAK, or FINISHED.
+ * - Accessibility: When [MotionPreference.REDUCED] is active, phase animation is disabled and all
+ *   spatial/effects transitions snap instantaneously.
+ * - Zero per-frame allocations: Reuses a remembered [Path] with [Path.reset] inside Canvas drawing.
+ * - Geometry preservation: Retains the physical 4.dp gap, 10.dp stroke width, 9.5.dp track, and 12-wave frequency.
  */
 @Composable
 fun CircularWavyProgressHero(
@@ -79,54 +142,81 @@ fun CircularWavyProgressHero(
     breakDurationText: String? = null,
     isNightShiftActive: Boolean = false
 ) {
-    // Smoothly animate progress updates (e.g. per second increments)
+    val motionScheme = VardiyaTheme.motionScheme
+    val motionPreference = VardiyaTheme.motionPreference
+
+    // 1. Physical Progress Motion (Expressive Spatial Spring)
     val animatedProgress by animateFloatAsState(
         targetValue = progress.coerceIn(0f, 1f),
-        animationSpec = tween(durationMillis = 650, easing = FastOutSlowInEasing),
+        animationSpec = motionScheme.defaultSpatialSpec(),
         label = "wavy_progress_anim"
     )
 
-    // Animated traveling wave phase (runs ONLY when RUNNING, zero idle overhead in other states)
-    val isRunning = shiftState == ShiftState.RUNNING
-    val phaseAnimation: Float = if (isRunning) {
-        val transition = rememberInfiniteTransition(label = "wavy_phase_transition")
-        val phase by transition.animateFloat(
-            initialValue = 0f,
-            targetValue = (2 * PI).toFloat(),
-            animationSpec = infiniteRepeatable(
-                animation = tween(
-                    durationMillis = if (isOvertimeActive) 1800 else 2400,
-                    easing = LinearEasing
-                ),
-                repeatMode = RepeatMode.Restart
-            ),
-            label = "wavy_phase"
-        )
-        phase
-    } else {
-        0f
+    // 2. Physical Amplitude Motion (Expressive Spatial Spring Settling)
+    val targetAmplitude = CircularWavyHeroMotion.resolveTargetAmplitude(
+        shiftState = shiftState,
+        isOvertimeActive = isOvertimeActive,
+        isBreakActive = isBreakActive
+    )
+    val animatedAmplitudeDp by animateDpAsState(
+        targetValue = targetAmplitude,
+        animationSpec = motionScheme.defaultSpatialSpec(),
+        label = "wavy_amplitude_anim"
+    )
+
+    // 3. Critically Damped State Color Transition (Effects Spring)
+    val targetActiveColor = CircularWavyHeroMotion.resolveHeroActiveColor(
+        shiftState = shiftState,
+        isOvertimeActive = isOvertimeActive,
+        isBreakActive = isBreakActive,
+        colorScheme = MaterialTheme.colorScheme
+    )
+    val animatedActiveColor by animateColorAsState(
+        targetValue = targetActiveColor,
+        animationSpec = motionScheme.defaultEffectsSpec(),
+        label = "wavy_active_color_anim"
+    )
+
+    // 4. Traveling Wave Phase Engine
+    var phaseAccumulator by remember { mutableFloatStateOf(0f) }
+
+    // Reset phase cleanly to 12 o'clock when shift resets to NOT_STARTED
+    LaunchedEffect(shiftState) {
+        if (shiftState == ShiftState.NOT_STARTED) {
+            phaseAccumulator = 0f
+        }
     }
 
-    // Material 3 Expressive state-adaptive colors
-    val activeColor = when {
-        shiftState == ShiftState.FINISHED -> MaterialTheme.colorScheme.secondary
-        shiftState == ShiftState.PAUSED || isBreakActive || isOvertimeActive -> MaterialTheme.colorScheme.tertiary
-        shiftState == ShiftState.RUNNING -> MaterialTheme.colorScheme.primary
-        else -> MaterialTheme.colorScheme.primary
+    val isWaveActive = CircularWavyHeroMotion.isWavePhaseActive(
+        shiftState = shiftState,
+        isBreakActive = isBreakActive,
+        motionPreference = motionPreference
+    )
+
+    if (isWaveActive) {
+        val cycleDurationMs = CircularWavyHeroMotion.resolveWaveCycleDurationMs(isOvertimeActive)
+        LaunchedEffect(cycleDurationMs) {
+            val cycleDurationNanos = cycleDurationMs * 1_000_000L
+            val twoPi = (2.0 * PI).toFloat()
+            var lastFrameNanos = 0L
+            while (isActive) {
+                withFrameNanos { frameTimeNanos ->
+                    if (lastFrameNanos != 0L) {
+                        val deltaNanos = frameTimeNanos - lastFrameNanos
+                        val deltaPhase = (deltaNanos.toDouble() / cycleDurationNanos.toDouble() * twoPi).toFloat()
+                        phaseAccumulator = (phaseAccumulator + deltaPhase) % twoPi
+                    }
+                    lastFrameNanos = frameTimeNanos
+                }
+            }
+        }
     }
 
     // Track color: visible against surface, creating the expressive wavy guide ring
     val trackColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.85f)
 
-    // Amplitude: distinct, pronounced, smooth wave height per state
-    val waveAmplitudeDp = when {
-        isOvertimeActive -> 7.0.dp
-        shiftState == ShiftState.RUNNING -> 6.0.dp
-        isBreakActive -> 5.0.dp
-        shiftState == ShiftState.PAUSED -> 4.5.dp
-        shiftState == ShiftState.FINISHED -> 5.0.dp
-        else -> 5.0.dp
-    }
+    // Reusable Path to eliminate per-frame allocations during Canvas draw
+    val activePath = remember { Path() }
 
     BoxWithConstraints(
         modifier = modifier
@@ -148,7 +238,7 @@ fun CircularWavyProgressHero(
             Canvas(modifier = Modifier.fillMaxSize()) {
                 val strokeWidthPx = 10.dp.toPx()
                 val trackStrokeWidthPx = 9.5.dp.toPx()
-                val waveAmplitudePx = waveAmplitudeDp.toPx()
+                val waveAmplitudePx = animatedAmplitudeDp.toPx()
                 val centerOffset = Offset(size.width / 2f, size.height / 2f)
 
                 // Margin for outer wave peaks + stroke width + safety padding
@@ -159,7 +249,7 @@ fun CircularWavyProgressHero(
 
                 // 12 waves around 360° (30° per wave cycle, aligning with clock hour marks)
                 val waveFrequency = 12
-                val phase = phaseAnimation
+                val phase = phaseAccumulator
                 val startAngleRad = -PI / 2.0 // 12 o'clock
                 val fullCircleRad = 2.0 * PI
 
@@ -216,7 +306,7 @@ fun CircularWavyProgressHero(
                 // 2. Draw the active determinate wavy progress arc
                 if (currentProgress > 0.005f) {
                     val activeSteps = max(24, (currentProgress * 720.0).roundToInt())
-                    val activePath = Path()
+                    activePath.reset()
 
                     for (i in 0..activeSteps) {
                         val fraction = i.toDouble() / activeSteps.toDouble()
@@ -238,7 +328,7 @@ fun CircularWavyProgressHero(
 
                     drawPath(
                         path = activePath,
-                        color = activeColor,
+                        color = animatedActiveColor,
                         style = Stroke(
                             width = strokeWidthPx,
                             cap = StrokeCap.Round,
@@ -267,7 +357,7 @@ fun CircularWavyProgressHero(
                         fontWeight = FontWeight.ExtraBold,
                         letterSpacing = (-1.0).sp
                     ),
-                    color = activeColor,
+                    color = animatedActiveColor,
                     textAlign = TextAlign.Center
                 )
 
@@ -307,7 +397,7 @@ fun CircularWavyProgressHero(
                         style = MaterialTheme.typography.labelSmall.copy(
                             fontWeight = FontWeight.Bold
                         ),
-                        color = activeColor
+                        color = animatedActiveColor
                     )
                 }
 

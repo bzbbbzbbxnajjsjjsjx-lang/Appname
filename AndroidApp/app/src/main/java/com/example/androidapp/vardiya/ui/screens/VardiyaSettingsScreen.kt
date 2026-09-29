@@ -1,5 +1,6 @@
 package com.example.androidapp.vardiya.ui.screens
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -56,10 +57,12 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.androidapp.theme.VardiyaIcons
+import com.example.androidapp.theme.motion.VardiyaTheme
 import com.example.androidapp.vardiya.domain.model.SalaryConfiguration
 import com.example.androidapp.vardiya.domain.validator.SalaryConfigValidator
 import com.example.androidapp.vardiya.domain.validator.SalaryValidationResult
 import com.example.androidapp.vardiya.ui.VardiyaViewModel
+import com.example.androidapp.vardiya.ui.components.VardiyaExpandableMotion
 import com.example.androidapp.vardiya.ui.components.VardiyaTimePickerDialog
 import com.example.androidapp.vardiya.ui.navigation.WindowWidthSizeClass
 import kotlinx.coroutines.launch
@@ -261,7 +264,18 @@ fun VardiyaSettingsScreen(
         fun SettingsFormContent(showSaveButton: Boolean) {
             Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 // Validation Error Banner
-                if (validationResult is SalaryValidationResult.Invalid) {
+                AnimatedVisibility(
+                    visible = validationResult is SalaryValidationResult.Invalid,
+                    enter = VardiyaExpandableMotion.createEnterTransition(
+                        VardiyaTheme.motionScheme,
+                        VardiyaTheme.motionPreference
+                    ),
+                    exit = VardiyaExpandableMotion.createExitTransition(
+                        VardiyaTheme.motionScheme,
+                        VardiyaTheme.motionPreference
+                    )
+                ) {
+                    val currentError = (validationResult as? SalaryValidationResult.Invalid)?.errorMessage ?: ""
                     Card(
                         colors = CardDefaults.cardColors(
                             containerColor = MaterialTheme.colorScheme.errorContainer
@@ -280,7 +294,7 @@ fun VardiyaSettingsScreen(
                                 tint = MaterialTheme.colorScheme.onErrorContainer
                             )
                             Text(
-                                text = validationResult.errorMessage,
+                                text = currentError,
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = FontWeight.SemiBold,
                                 color = MaterialTheme.colorScheme.onErrorContainer
@@ -443,47 +457,59 @@ fun VardiyaSettingsScreen(
                             )
                         }
 
-                        if (isOvertimeEnabled) {
-                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-
-                            Text(
-                                text = "Hızlı Çarpan Seçimi",
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.Medium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                        AnimatedVisibility(
+                            visible = isOvertimeEnabled,
+                            enter = VardiyaExpandableMotion.createEnterTransition(
+                                VardiyaTheme.motionScheme,
+                                VardiyaTheme.motionPreference
+                            ),
+                            exit = VardiyaExpandableMotion.createExitTransition(
+                                VardiyaTheme.motionScheme,
+                                VardiyaTheme.motionPreference
                             )
+                        ) {
+                            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
-                            val overtimePresets = listOf("1.25", "1.50", "1.75", "2.00")
-                            FlowRow(
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                overtimePresets.forEach { preset ->
-                                    val isSelected = overtimeMultiplierText.trim() == preset
-                                    FilterChip(
-                                        selected = isSelected,
-                                        onClick = { overtimeMultiplierText = preset },
-                                        label = { Text("${preset}x") },
-                                        colors = FilterChipDefaults.filterChipColors(
-                                            selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                                            selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                                Text(
+                                    text = "Hızlı Çarpan Seçimi",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Medium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+
+                                val overtimePresets = listOf("1.25", "1.50", "1.75", "2.00")
+                                FlowRow(
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    overtimePresets.forEach { preset ->
+                                        val isSelected = overtimeMultiplierText.trim() == preset
+                                        FilterChip(
+                                            selected = isSelected,
+                                            onClick = { overtimeMultiplierText = preset },
+                                            label = { Text("${preset}x") },
+                                            colors = FilterChipDefaults.filterChipColors(
+                                                selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                                                selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                                            )
                                         )
-                                    )
+                                    }
                                 }
-                            }
 
-                            OutlinedTextField(
-                                value = overtimeMultiplierText,
-                                onValueChange = { overtimeMultiplierText = it },
-                                label = { Text("Özel Fazla Mesai Çarpanı (örn: 1.50)") },
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                                singleLine = true,
-                                isError = validationResult is SalaryValidationResult.Invalid &&
-                                        validationResult.field == SalaryValidationResult.Field.OVERTIME_MULTIPLIER,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .semantics { contentDescription = "Fazla mesai çarpanı" }
-                            )
+                                OutlinedTextField(
+                                    value = overtimeMultiplierText,
+                                    onValueChange = { overtimeMultiplierText = it },
+                                    label = { Text("Özel Fazla Mesai Çarpanı (örn: 1.50)") },
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                    singleLine = true,
+                                    isError = validationResult is SalaryValidationResult.Invalid &&
+                                            validationResult.field == SalaryValidationResult.Field.OVERTIME_MULTIPLIER,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .semantics { contentDescription = "Fazla mesai çarpanı" }
+                                )
+                            }
                         }
                     }
                 }
@@ -536,105 +562,117 @@ fun VardiyaSettingsScreen(
                             )
                         }
 
-                        if (isNightDifferentialEnabled) {
-                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-
-                            Text(
-                                text = "Gece Farkı Ek Oranı",
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.Medium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                        AnimatedVisibility(
+                            visible = isNightDifferentialEnabled,
+                            enter = VardiyaExpandableMotion.createEnterTransition(
+                                VardiyaTheme.motionScheme,
+                                VardiyaTheme.motionPreference
+                            ),
+                            exit = VardiyaExpandableMotion.createExitTransition(
+                                VardiyaTheme.motionScheme,
+                                VardiyaTheme.motionPreference
                             )
+                        ) {
+                            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
-                            val nightPresets = listOf("0.10" to "%10", "0.15" to "%15", "0.20" to "%20", "0.25" to "%25")
-                            FlowRow(
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                nightPresets.forEach { (value, label) ->
-                                    val isSelected = nightDifferentialRateText.trim() == value ||
-                                            nightDifferentialRateText.trim() == label
-                                    FilterChip(
-                                        selected = isSelected,
-                                        onClick = { nightDifferentialRateText = value },
-                                        label = { Text(label) },
-                                        colors = FilterChipDefaults.filterChipColors(
-                                            selectedContainerColor = MaterialTheme.colorScheme.tertiaryContainer,
-                                            selectedLabelColor = MaterialTheme.colorScheme.onTertiaryContainer
-                                        )
-                                    )
-                                }
-                            }
+                                Text(
+                                    text = "Gece Farkı Ek Oranı",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Medium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
 
-                            OutlinedTextField(
-                                value = nightDifferentialRateText,
-                                onValueChange = { nightDifferentialRateText = it },
-                                label = { Text("Özel Gece Farkı Oranı (örn: 0.15 veya %15)") },
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                                singleLine = true,
-                                isError = validationResult is SalaryValidationResult.Invalid &&
-                                        validationResult.field == SalaryValidationResult.Field.NIGHT_DIFFERENTIAL_RATE,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .semantics { contentDescription = "Gece farkı oranı" }
-                            )
-
-                            Text(
-                                text = "Gece Saat Aralığı (Saat Seçimi)",
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.Medium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(12.dp)
-                            ) {
-                                // Start Hour Selector
-                                OutlinedCard(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .clickable { showStartHourPicker = true },
-                                    shape = RoundedCornerShape(12.dp)
+                                val nightPresets = listOf("0.10" to "%10", "0.15" to "%15", "0.20" to "%20", "0.25" to "%25")
+                                FlowRow(
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
-                                    Column(modifier = Modifier.padding(12.dp)) {
-                                        Text(
-                                            text = "Başlangıç",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                        Spacer(modifier = Modifier.height(4.dp))
-                                        Text(
-                                            text = String.format(Locale.getDefault(), "%02d:00", nightShiftStartHour),
-                                            style = MaterialTheme.typography.titleLarge,
-                                            fontWeight = FontWeight.Bold,
-                                            color = MaterialTheme.colorScheme.primary
+                                    nightPresets.forEach { (value, label) ->
+                                        val isSelected = nightDifferentialRateText.trim() == value ||
+                                                nightDifferentialRateText.trim() == label
+                                        FilterChip(
+                                            selected = isSelected,
+                                            onClick = { nightDifferentialRateText = value },
+                                            label = { Text(label) },
+                                            colors = FilterChipDefaults.filterChipColors(
+                                                selectedContainerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                                                selectedLabelColor = MaterialTheme.colorScheme.onTertiaryContainer
+                                            )
                                         )
                                     }
                                 }
 
-                                // End Hour Selector
-                                OutlinedCard(
+                                OutlinedTextField(
+                                    value = nightDifferentialRateText,
+                                    onValueChange = { nightDifferentialRateText = it },
+                                    label = { Text("Özel Gece Farkı Oranı (örn: 0.15 veya %15)") },
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                    singleLine = true,
+                                    isError = validationResult is SalaryValidationResult.Invalid &&
+                                            validationResult.field == SalaryValidationResult.Field.NIGHT_DIFFERENTIAL_RATE,
                                     modifier = Modifier
-                                        .weight(1f)
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .clickable { showEndHourPicker = true },
-                                    shape = RoundedCornerShape(12.dp)
+                                        .fillMaxWidth()
+                                        .semantics { contentDescription = "Gece farkı oranı" }
+                                )
+
+                                Text(
+                                    text = "Gece Saat Aralığı (Saat Seçimi)",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Medium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                                 ) {
-                                    Column(modifier = Modifier.padding(12.dp)) {
-                                        Text(
-                                            text = "Bitiş",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                        Spacer(modifier = Modifier.height(4.dp))
-                                        Text(
-                                            text = String.format(Locale.getDefault(), "%02d:00", nightShiftEndHour),
-                                            style = MaterialTheme.typography.titleLarge,
-                                            fontWeight = FontWeight.Bold,
-                                            color = MaterialTheme.colorScheme.primary
-                                        )
+                                    // Start Hour Selector
+                                    OutlinedCard(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .clickable { showStartHourPicker = true },
+                                        shape = RoundedCornerShape(12.dp)
+                                    ) {
+                                        Column(modifier = Modifier.padding(12.dp)) {
+                                            Text(
+                                                text = "Başlangıç",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            Text(
+                                                text = String.format(Locale.getDefault(), "%02d:00", nightShiftStartHour),
+                                                style = MaterialTheme.typography.titleLarge,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.primary
+                                            )
+                                        }
+                                    }
+
+                                    // End Hour Selector
+                                    OutlinedCard(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .clickable { showEndHourPicker = true },
+                                        shape = RoundedCornerShape(12.dp)
+                                    ) {
+                                        Column(modifier = Modifier.padding(12.dp)) {
+                                            Text(
+                                                text = "Bitiş",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            Text(
+                                                text = String.format(Locale.getDefault(), "%02d:00", nightShiftEndHour),
+                                                style = MaterialTheme.typography.titleLarge,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.primary
+                                            )
+                                        }
                                     }
                                 }
                             }

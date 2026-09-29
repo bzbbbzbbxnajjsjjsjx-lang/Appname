@@ -1,7 +1,7 @@
 package com.example.androidapp.vardiya.ui.components
 
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.tween
+import com.example.androidapp.theme.motion.VardiyaTheme
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -33,6 +33,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -254,7 +255,7 @@ private fun CalendarDayCell(
 
     val animatedColor by animateColorAsState(
         targetValue = targetContainerColor,
-        animationSpec = tween(durationMillis = 200),
+        animationSpec = VardiyaTheme.motionScheme.fastEffectsSpec(),
         label = "cellColor"
     )
 
@@ -288,7 +289,10 @@ private fun CalendarDayCell(
         onClick = onClick,
         modifier = modifier
             .aspectRatio(1f)
-            .semantics { contentDescription = cellDescription },
+            .semantics {
+                contentDescription = cellDescription
+                this.selected = isSelected
+            },
         shape = RoundedCornerShape(10.dp),
         color = animatedColor,
         border = borderStroke

@@ -48,6 +48,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.androidapp.theme.VardiyaIcons
+import com.example.androidapp.theme.motion.VardiyaTheme
 import com.example.androidapp.vardiya.domain.analytics.AnalyticsPeriod
 import com.example.androidapp.vardiya.domain.analytics.MonthlyAnalyticsData
 import com.example.androidapp.vardiya.domain.analytics.OverallAnalyticsSummary
@@ -285,10 +286,15 @@ private fun AnalyticsChartSection(
             onNext = { viewModel.navigateAnalyticsNext() }
         )
 
+        val motionScheme = VardiyaTheme.motionScheme
+
         // Animated Chart View
         AnimatedContent(
             targetState = uiState.analyticsPeriod,
-            transitionSpec = { fadeIn() togetherWith fadeOut() },
+            transitionSpec = {
+                fadeIn(animationSpec = motionScheme.defaultEffectsSpec()) togetherWith
+                    fadeOut(animationSpec = motionScheme.defaultEffectsSpec())
+            },
             label = "analyticsChartTransition"
         ) { targetPeriod ->
             if (targetPeriod == AnalyticsPeriod.WEEKLY) {

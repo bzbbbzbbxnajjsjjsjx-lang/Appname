@@ -1,6 +1,7 @@
 package com.example.androidapp.vardiya.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
+import com.example.androidapp.theme.motion.VardiyaTheme
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -145,7 +146,17 @@ fun VardiyaHistoryDialog(
                                 }
 
                                 // Expandable Details
-                                AnimatedVisibility(visible = isExpanded) {
+                                AnimatedVisibility(
+                                    visible = isExpanded,
+                                    enter = VardiyaExpandableMotion.createEnterTransition(
+                                        VardiyaTheme.motionScheme,
+                                        VardiyaTheme.motionPreference
+                                    ),
+                                    exit = VardiyaExpandableMotion.createExitTransition(
+                                        VardiyaTheme.motionScheme,
+                                        VardiyaTheme.motionPreference
+                                    )
+                                ) {
                                     Column(
                                         modifier = Modifier
                                             .fillMaxWidth()

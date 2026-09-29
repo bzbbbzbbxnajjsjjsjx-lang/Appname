@@ -2,8 +2,12 @@ package com.example.androidapp.vardiya.ui.components
 
 import android.view.HapticFeedbackConstants
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.ContentTransform
+import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
@@ -32,7 +36,64 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.androidapp.theme.VardiyaIcons
+import com.example.androidapp.theme.motion.MotionPreference
+import com.example.androidapp.theme.motion.VardiyaMotionScheme
+import com.example.androidapp.theme.motion.VardiyaTheme
 import com.example.androidapp.vardiya.domain.model.ShiftState
+
+/**
+ * Semantic layout configurations for the Vardiya Control Bar.
+ */
+enum class ControlBarLayoutConfig {
+    START_ONLY,        // 1 button: Vardiyayı Başlat
+    ACTIVE_CONTROLS,   // 3 buttons: Duraklat, Mola, Bitir
+    BREAK_CONTROLS,    // 2 buttons: Molayı Bitir, Bitir
+    PAUSED_CONTROLS,   // 2 buttons: Devam Et, Bitir
+    RESET_ONLY         // 1 button: Yeni Vardiya
+}
+
+/**
+ * Pure motion and layout mapping for [VardiyaControlBar].
+ */
+object VardiyaControlBarMotion {
+    fun resolveLayoutConfig(shiftState: ShiftState, isBreakActive: Boolean): ControlBarLayoutConfig =
+        when (shiftState) {
+            ShiftState.NOT_STARTED -> ControlBarLayoutConfig.START_ONLY
+            ShiftState.RUNNING -> if (isBreakActive) ControlBarLayoutConfig.BREAK_CONTROLS else ControlBarLayoutConfig.ACTIVE_CONTROLS
+            ShiftState.PAUSED -> ControlBarLayoutConfig.PAUSED_CONTROLS
+            ShiftState.FINISHED -> ControlBarLayoutConfig.RESET_ONLY
+        }
+
+    fun createTransition(
+        motionScheme: VardiyaMotionScheme,
+        motionPreference: MotionPreference
+    ): ContentTransform {
+        return if (motionPreference == MotionPreference.REDUCED) {
+            ContentTransform(
+                targetContentEnter = fadeIn(animationSpec = motionScheme.defaultEffectsSpec()),
+                initialContentExit = fadeOut(animationSpec = motionScheme.defaultEffectsSpec()),
+                sizeTransform = null
+            )
+        } else {
+            ContentTransform(
+                targetContentEnter = fadeIn(animationSpec = motionScheme.fastEffectsSpec()) +
+                    scaleIn(
+                        initialScale = 0.96f,
+                        animationSpec = motionScheme.fastSpatialSpec()
+                    ),
+                initialContentExit = fadeOut(animationSpec = motionScheme.fastEffectsSpec()) +
+                    scaleOut(
+                        targetScale = 0.96f,
+                        animationSpec = motionScheme.fastSpatialSpec()
+                    ),
+                sizeTransform = SizeTransform(
+                    clip = true,
+                    sizeAnimationSpec = { _, _ -> motionScheme.fastSpatialSpec() }
+                )
+            )
+        }
+    }
+}
 
 /**
  * Modern Material 3 Expressive Floating Control Bar for Vardiya 3.0.
@@ -42,6 +103,8 @@ import com.example.androidapp.vardiya.domain.model.ShiftState
  * - Fast Break toggle (Mola Ver / Molayı Bitir)
  * - Tonal feedback, accessibility semantics, and haptic response.
  * - Single-line text layout preventing awkward syllable/word breaks on all screen sizes.
+ * - Coordinated Expressive motion with fast spatial spring morphing and effects fade.
+ * - Zero spatial overshoot under reduced motion.
  */
 @Composable
 fun VardiyaControlBar(
@@ -58,6 +121,9 @@ fun VardiyaControlBar(
     val view = LocalView.current
     val buttonHeight = 56.dp
     val pillShape = RoundedCornerShape(percent = 50)
+    val motionScheme = VardiyaTheme.motionScheme
+    val motionPreference = VardiyaTheme.motionPreference
+    val layoutConfig = VardiyaControlBarMotion.resolveLayoutConfig(shiftState, isBreakActive)
 
     Surface(
         modifier = modifier
@@ -69,13 +135,15 @@ fun VardiyaControlBar(
         shadowElevation = 4.dp
     ) {
         AnimatedContent(
-            targetState = Pair(shiftState, isBreakActive),
-            transitionSpec = { fadeIn() togetherWith fadeOut() },
+            targetState = layoutConfig,
+            transitionSpec = {
+                VardiyaControlBarMotion.createTransition(motionScheme, motionPreference)
+            },
             label = "control_bar_state_anim",
             modifier = Modifier.padding(horizontal = 6.dp, vertical = 6.dp)
-        ) { (state, inBreak) ->
-            when (state) {
-                ShiftState.NOT_STARTED -> {
+        ) { config ->
+            when (config) {
+                ControlBarLayoutConfig.START_ONLY -> {
                     Button(
                         onClick = {
                             view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
@@ -111,189 +179,189 @@ fun VardiyaControlBar(
                     }
                 }
 
-                ShiftState.RUNNING -> {
-                    if (inBreak) {
-                        // In break: primary option is "Molayı Bitir", secondary is "Bitir"
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                ControlBarLayoutConfig.ACTIVE_CONTROLS -> {
+                    // Normal active: Pause, Quick Break, Finish (single-line, no text breaking)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Button(
+                            onClick = {
+                                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                                onPause()
+                            },
+                            shape = pillShape,
+                            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp),
+                            modifier = Modifier
+                                .weight(1.15f)
+                                .height(buttonHeight)
+                                .semantics { contentDescription = "Vardiyayı duraklat" },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                                contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                            )
                         ) {
-                            Button(
-                                onClick = {
-                                    view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                                    onToggleBreak()
-                                },
-                                shape = pillShape,
-                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
-                                modifier = Modifier
-                                    .weight(1.3f)
-                                    .height(buttonHeight)
-                                    .semantics { contentDescription = "Molayı bitir ve çalışmaya dön" },
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = MaterialTheme.colorScheme.primary,
-                                    contentColor = MaterialTheme.colorScheme.onPrimary
+                            Icon(
+                                imageVector = VardiyaIcons.Pause,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "DURAKLAT",
+                                maxLines = 1,
+                                softWrap = false,
+                                overflow = TextOverflow.Clip,
+                                style = MaterialTheme.typography.labelMedium.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = (-0.2).sp
                                 )
-                            ) {
-                                Icon(
-                                    imageVector = VardiyaIcons.Play,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = "MOLAYI BİTİR",
-                                    maxLines = 1,
-                                    softWrap = false,
-                                    overflow = TextOverflow.Clip,
-                                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
-                                )
-                            }
-
-                            Button(
-                                onClick = {
-                                    view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                                    onFinish()
-                                },
-                                shape = pillShape,
-                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
-                                modifier = Modifier
-                                    .weight(0.9f)
-                                    .height(buttonHeight)
-                                    .semantics { contentDescription = "Vardiyayı bitir" },
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = MaterialTheme.colorScheme.errorContainer,
-                                    contentColor = MaterialTheme.colorScheme.onErrorContainer
-                                )
-                            ) {
-                                Icon(
-                                    imageVector = VardiyaIcons.Stop,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = "BİTİR",
-                                    maxLines = 1,
-                                    softWrap = false,
-                                    overflow = TextOverflow.Clip,
-                                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold)
-                                )
-                            }
+                            )
                         }
-                    } else {
-                        // Normal active: Pause, Quick Break, Finish (single-line, no text breaking)
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            verticalAlignment = Alignment.CenterVertically
+
+                        Button(
+                            onClick = {
+                                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                                onToggleBreak()
+                            },
+                            shape = pillShape,
+                            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp),
+                            modifier = Modifier
+                                .weight(0.9f)
+                                .height(buttonHeight)
+                                .semantics { contentDescription = "Mola başlat" },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                                contentColor = MaterialTheme.colorScheme.onTertiaryContainer
+                            )
                         ) {
-                            Button(
-                                onClick = {
-                                    view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                                    onPause()
-                                },
-                                shape = pillShape,
-                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp),
-                                modifier = Modifier
-                                    .weight(1.15f)
-                                    .height(buttonHeight)
-                                    .semantics { contentDescription = "Vardiyayı duraklat" },
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                            Icon(
+                                imageVector = VardiyaIcons.Coffee,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "MOLA",
+                                maxLines = 1,
+                                softWrap = false,
+                                overflow = TextOverflow.Clip,
+                                style = MaterialTheme.typography.labelMedium.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 0.sp
                                 )
-                            ) {
-                                Icon(
-                                    imageVector = VardiyaIcons.Pause,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    text = "DURAKLAT",
-                                    maxLines = 1,
-                                    softWrap = false,
-                                    overflow = TextOverflow.Clip,
-                                    style = MaterialTheme.typography.labelMedium.copy(
-                                        fontWeight = FontWeight.Bold,
-                                        letterSpacing = (-0.2).sp
-                                    )
-                                )
-                            }
+                            )
+                        }
 
-                            Button(
-                                onClick = {
-                                    view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                                    onToggleBreak()
-                                },
-                                shape = pillShape,
-                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp),
-                                modifier = Modifier
-                                    .weight(0.9f)
-                                    .height(buttonHeight)
-                                    .semantics { contentDescription = "Mola başlat" },
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = MaterialTheme.colorScheme.tertiaryContainer,
-                                    contentColor = MaterialTheme.colorScheme.onTertiaryContainer
+                        Button(
+                            onClick = {
+                                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                                onFinish()
+                            },
+                            shape = pillShape,
+                            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp),
+                            modifier = Modifier
+                                .weight(0.95f)
+                                .height(buttonHeight)
+                                .semantics { contentDescription = "Vardiyayı bitir" },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.errorContainer,
+                                contentColor = MaterialTheme.colorScheme.onErrorContainer
+                            )
+                        ) {
+                            Icon(
+                                imageVector = VardiyaIcons.Stop,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "BİTİR",
+                                maxLines = 1,
+                                softWrap = false,
+                                overflow = TextOverflow.Clip,
+                                style = MaterialTheme.typography.labelMedium.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 0.sp
                                 )
-                            ) {
-                                Icon(
-                                    imageVector = VardiyaIcons.Coffee,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    text = "MOLA",
-                                    maxLines = 1,
-                                    softWrap = false,
-                                    overflow = TextOverflow.Clip,
-                                    style = MaterialTheme.typography.labelMedium.copy(
-                                        fontWeight = FontWeight.Bold,
-                                        letterSpacing = 0.sp
-                                    )
-                                )
-                            }
-
-                            Button(
-                                onClick = {
-                                    view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                                    onFinish()
-                                },
-                                shape = pillShape,
-                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp),
-                                modifier = Modifier
-                                    .weight(0.95f)
-                                    .height(buttonHeight)
-                                    .semantics { contentDescription = "Vardiyayı bitir" },
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = MaterialTheme.colorScheme.errorContainer,
-                                    contentColor = MaterialTheme.colorScheme.onErrorContainer
-                                )
-                            ) {
-                                Icon(
-                                    imageVector = VardiyaIcons.Stop,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    text = "BİTİR",
-                                    maxLines = 1,
-                                    softWrap = false,
-                                    overflow = TextOverflow.Clip,
-                                    style = MaterialTheme.typography.labelMedium.copy(
-                                        fontWeight = FontWeight.Bold,
-                                        letterSpacing = 0.sp
-                                    )
-                                )
-                            }
+                            )
                         }
                     }
                 }
 
-                ShiftState.PAUSED -> {
+                ControlBarLayoutConfig.BREAK_CONTROLS -> {
+                    // In break: primary option is "Molayı Bitir", secondary is "Bitir"
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Button(
+                            onClick = {
+                                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                                onToggleBreak()
+                            },
+                            shape = pillShape,
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+                            modifier = Modifier
+                                .weight(1.3f)
+                                .height(buttonHeight)
+                                .semantics { contentDescription = "Molayı bitir ve çalışmaya dön" },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primary,
+                                contentColor = MaterialTheme.colorScheme.onPrimary
+                            )
+                        ) {
+                            Icon(
+                                imageVector = VardiyaIcons.Play,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "MOLAYI BİTİR",
+                                maxLines = 1,
+                                softWrap = false,
+                                overflow = TextOverflow.Clip,
+                                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
+                            )
+                        }
+
+                        Button(
+                            onClick = {
+                                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                                onFinish()
+                            },
+                            shape = pillShape,
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+                            modifier = Modifier
+                                .weight(0.9f)
+                                .height(buttonHeight)
+                                .semantics { contentDescription = "Vardiyayı bitir" },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.errorContainer,
+                                contentColor = MaterialTheme.colorScheme.onErrorContainer
+                            )
+                        ) {
+                            Icon(
+                                imageVector = VardiyaIcons.Stop,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "BİTİR",
+                                maxLines = 1,
+                                softWrap = false,
+                                overflow = TextOverflow.Clip,
+                                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold)
+                            )
+                        }
+                    }
+                }
+
+                ControlBarLayoutConfig.PAUSED_CONTROLS -> {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -363,7 +431,7 @@ fun VardiyaControlBar(
                     }
                 }
 
-                ShiftState.FINISHED -> {
+                ControlBarLayoutConfig.RESET_ONLY -> {
                     Button(
                         onClick = {
                             view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)

@@ -1,10 +1,8 @@
 package com.example.androidapp.vardiya.ui.screens
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
+import com.example.androidapp.theme.motion.VardiyaTheme
+import com.example.androidapp.vardiya.ui.components.VardiyaExpandableMotion
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -479,8 +477,14 @@ private fun HistoryListContent(
         // Expandable Calendar Heatmap
         AnimatedVisibility(
             visible = isHeatmapVisible,
-            enter = fadeIn() + expandVertically(),
-            exit = fadeOut() + shrinkVertically()
+            enter = VardiyaExpandableMotion.createEnterTransition(
+                VardiyaTheme.motionScheme,
+                VardiyaTheme.motionPreference
+            ),
+            exit = VardiyaExpandableMotion.createExitTransition(
+                VardiyaTheme.motionScheme,
+                VardiyaTheme.motionPreference
+            )
         ) {
             Column(modifier = Modifier.padding(bottom = 12.dp)) {
                 CalendarHeatmap(

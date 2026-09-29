@@ -11,6 +11,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.animation.ContentTransform
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -31,6 +37,9 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.ui.NavDisplay
+import com.example.androidapp.theme.motion.MotionPreference
+import com.example.androidapp.theme.motion.VardiyaMotionScheme
+import com.example.androidapp.theme.motion.VardiyaTheme
 import com.example.androidapp.vardiya.data.repository.LocalVardiyaRepository
 import com.example.androidapp.vardiya.ui.navigation.AnalyticsNavKey
 import com.example.androidapp.vardiya.ui.navigation.HistoryNavKey
@@ -128,7 +137,63 @@ fun VardiyaAppScaffold(
 }
 
 /**
- * Navigation 3 Display container routing all Vardiya 3.0 destinations.
+ * Navigation 3 Expressive Motion Transitions for Vardiya.
+ *
+ * Physics principles:
+ * - Forward Navigation: Subtle 8% spatial offset paired with critically damped effects fade.
+ *   Avoids disorienting full-screen carousels while clearly communicating hierarchy shift.
+ * - Pop/Back Navigation: Symmetrical reverse 8% spatial offset paired with effects fade.
+ * - Reduced Motion: Immediate zero-offset fade without spatial movement.
+ */
+object VardiyaNavTransitions {
+    const val SubtleSpatialOffsetFactor = 0.08f
+
+    fun createForwardTransition(
+        motionScheme: VardiyaMotionScheme,
+        motionPreference: MotionPreference
+    ): ContentTransform {
+        return if (motionPreference == MotionPreference.REDUCED) {
+            fadeIn(animationSpec = motionScheme.defaultEffectsSpec()) togetherWith
+                fadeOut(animationSpec = motionScheme.defaultEffectsSpec())
+        } else {
+            (fadeIn(animationSpec = motionScheme.defaultEffectsSpec()) +
+                slideInHorizontally(
+                    animationSpec = motionScheme.defaultSpatialSpec(),
+                    initialOffsetX = { (it * SubtleSpatialOffsetFactor).toInt() }
+                )) togetherWith
+                (fadeOut(animationSpec = motionScheme.defaultEffectsSpec()) +
+                    slideOutHorizontally(
+                        animationSpec = motionScheme.defaultSpatialSpec(),
+                        targetOffsetX = { (-it * SubtleSpatialOffsetFactor).toInt() }
+                    ))
+        }
+    }
+
+    fun createPopTransition(
+        motionScheme: VardiyaMotionScheme,
+        motionPreference: MotionPreference
+    ): ContentTransform {
+        return if (motionPreference == MotionPreference.REDUCED) {
+            fadeIn(animationSpec = motionScheme.defaultEffectsSpec()) togetherWith
+                fadeOut(animationSpec = motionScheme.defaultEffectsSpec())
+        } else {
+            (fadeIn(animationSpec = motionScheme.defaultEffectsSpec()) +
+                slideInHorizontally(
+                    animationSpec = motionScheme.defaultSpatialSpec(),
+                    initialOffsetX = { (-it * SubtleSpatialOffsetFactor).toInt() }
+                )) togetherWith
+                (fadeOut(animationSpec = motionScheme.defaultEffectsSpec()) +
+                    slideOutHorizontally(
+                        animationSpec = motionScheme.defaultSpatialSpec(),
+                        targetOffsetX = { (it * SubtleSpatialOffsetFactor).toInt() }
+                    ))
+        }
+    }
+}
+
+/**
+ * Navigation 3 Display container routing all Vardiya 3.0 destinations
+ * with Material 3 Expressive screen transitions.
  */
 @Composable
 private fun VardiyaNavDisplay(
@@ -136,9 +201,18 @@ private fun VardiyaNavDisplay(
     viewModel: VardiyaViewModel,
     onNavigateToCalculator: (() -> Unit)?
 ) {
+    val motionScheme = VardiyaTheme.motionScheme
+    val motionPreference = VardiyaTheme.motionPreference
+
     NavDisplay(
         backStack = navState.backStack,
         onBack = { navState.handleBack() },
+        transitionSpec = {
+            VardiyaNavTransitions.createForwardTransition(motionScheme, motionPreference)
+        },
+        popTransitionSpec = {
+            VardiyaNavTransitions.createPopTransition(motionScheme, motionPreference)
+        },
         entryProvider = entryProvider {
             entry<HomeNavKey> {
                 VardiyaScreen(

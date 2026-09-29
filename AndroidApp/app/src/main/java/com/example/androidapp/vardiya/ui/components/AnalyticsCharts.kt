@@ -1,7 +1,7 @@
 package com.example.androidapp.vardiya.ui.components
 
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
+import com.example.androidapp.theme.motion.VardiyaTheme
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -37,6 +37,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -129,7 +130,7 @@ fun WeeklyBarChart(
                     val targetRatio = (point.totalEarned.toFloat() / maxEarned).coerceIn(0f, 1f)
                     val animatedRatio by animateFloatAsState(
                         targetValue = targetRatio,
-                        animationSpec = tween(durationMillis = 400),
+                        animationSpec = VardiyaTheme.motionScheme.defaultSpatialSpec(),
                         label = "barRatio_$index"
                     )
 
@@ -155,7 +156,10 @@ fun WeeklyBarChart(
                             .clickable {
                                 selectedDayIndex = if (isSelected) null else index
                             }
-                            .semantics { contentDescription = pointDescription }
+                            .semantics {
+                                contentDescription = pointDescription
+                                this.selected = isSelected
+                            }
                     ) {
                         // Value label above bar
                         if (point.totalEarned > BigDecimal.ZERO) {
@@ -342,7 +346,7 @@ fun MonthlyTrendChart(
                     val targetRatio = (bucket.totalEarned.toFloat() / maxEarned).coerceIn(0f, 1f)
                     val animatedRatio by animateFloatAsState(
                         targetValue = targetRatio,
-                        animationSpec = tween(durationMillis = 400),
+                        animationSpec = VardiyaTheme.motionScheme.defaultSpatialSpec(),
                         label = "monthBucket_${bucket.weekIndex}"
                     )
 

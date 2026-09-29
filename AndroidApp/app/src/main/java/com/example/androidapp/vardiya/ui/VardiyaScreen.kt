@@ -1,12 +1,12 @@
 package com.example.androidapp.vardiya.ui
 
 import android.view.HapticFeedbackConstants
-import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
+import com.example.androidapp.theme.motion.VardiyaTheme
+import com.example.androidapp.vardiya.ui.components.StateBadgeMotion
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -468,16 +468,24 @@ private fun StateBadge(
     isBreakActive: Boolean = false,
     onClick: (() -> Unit)? = null
 ) {
-    val infiniteTransition = rememberInfiniteTransition(label = "pulse")
-    val pulseAlpha by infiniteTransition.animateFloat(
-        initialValue = 0.3f,
-        targetValue = 1.0f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1000, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "pulse_alpha"
-    )
+    val motionPreference = VardiyaTheme.motionPreference
+    val isPulseActive = StateBadgeMotion.isPulseActive(shiftState, isBreakActive, motionPreference)
+
+    val pulseAlpha = if (isPulseActive) {
+        val infiniteTransition = rememberInfiniteTransition(label = "pulse")
+        val alpha by infiniteTransition.animateFloat(
+            initialValue = StateBadgeMotion.PulseInitialAlpha,
+            targetValue = StateBadgeMotion.PulseTargetAlpha,
+            animationSpec = infiniteRepeatable(
+                animation = StateBadgeMotion.pulseAnimationSpec(),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "pulse_alpha"
+        )
+        alpha
+    } else {
+        StateBadgeMotion.PulseTargetAlpha
+    }
 
     Surface(
         onClick = onClick ?: {},
