@@ -8,3 +8,4 @@ local.properties
 *.keystore
 *.apk
 *.aab
+reference/

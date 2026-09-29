@@ -42,6 +42,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.contentDescription
@@ -471,8 +472,9 @@ private fun StateBadge(
     val motionPreference = VardiyaTheme.motionPreference
     val isPulseActive = StateBadgeMotion.isPulseActive(shiftState, isBreakActive, motionPreference)
 
-    val pulseAlpha = if (isPulseActive) {
-        val infiniteTransition = rememberInfiniteTransition(label = "pulse")
+    val infiniteTransition = if (isPulseActive) rememberInfiniteTransition(label = "pulse") else null
+
+    val pulseAlpha = if (isPulseActive && infiniteTransition != null) {
         val alpha by infiniteTransition.animateFloat(
             initialValue = StateBadgeMotion.PulseInitialAlpha,
             targetValue = StateBadgeMotion.PulseTargetAlpha,
@@ -485,6 +487,21 @@ private fun StateBadge(
         alpha
     } else {
         StateBadgeMotion.PulseTargetAlpha
+    }
+
+    val pulseScale = if (isPulseActive && infiniteTransition != null) {
+        val scale by infiniteTransition.animateFloat(
+            initialValue = StateBadgeMotion.PulseInitialScale,
+            targetValue = StateBadgeMotion.PulseTargetScale,
+            animationSpec = infiniteRepeatable(
+                animation = StateBadgeMotion.pulseAnimationSpec(),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "pulse_scale"
+        )
+        scale
+    } else {
+        1.0f
     }
 
     Surface(
@@ -509,12 +526,16 @@ private fun StateBadge(
                 Box(
                     modifier = Modifier
                         .size(10.dp)
+                        .graphicsLayer {
+                            scaleX = pulseScale
+                            scaleY = pulseScale
+                            this.alpha = pulseAlpha
+                        }
                         .clip(CircleShape)
                         .background(
                             if (isBreakActive) MaterialTheme.colorScheme.tertiary
                             else MaterialTheme.colorScheme.primary
                         )
-                        .alpha(pulseAlpha)
                 )
             } else if (shiftState == ShiftState.PAUSED) {
                 Box(

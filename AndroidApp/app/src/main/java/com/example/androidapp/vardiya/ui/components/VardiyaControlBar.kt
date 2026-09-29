@@ -35,10 +35,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.runtime.remember
 import com.example.androidapp.theme.VardiyaIcons
 import com.example.androidapp.theme.motion.MotionPreference
 import com.example.androidapp.theme.motion.VardiyaMotionScheme
 import com.example.androidapp.theme.motion.VardiyaTheme
+import com.example.androidapp.theme.motion.contract.ControlBarSemanticState
+import com.example.androidapp.theme.motion.contract.DefaultVardiyaControlBarMotionContract
+import com.example.androidapp.theme.motion.contract.VardiyaControlBarMotionContract
 import com.example.androidapp.vardiya.domain.model.ShiftState
 
 /**
@@ -54,45 +58,22 @@ enum class ControlBarLayoutConfig {
 
 /**
  * Pure motion and layout mapping for [VardiyaControlBar].
+ * Driven by [VardiyaControlBarMotionContract] to separate semantic state decisions
+ * from UI composable layout.
  */
 object VardiyaControlBarMotion {
+    val contract: VardiyaControlBarMotionContract = DefaultVardiyaControlBarMotionContract
+
+    fun resolveSemanticState(shiftState: ShiftState, isBreakActive: Boolean): ControlBarSemanticState =
+        contract.resolveSemanticState(shiftState, isBreakActive)
+
     fun resolveLayoutConfig(shiftState: ShiftState, isBreakActive: Boolean): ControlBarLayoutConfig =
-        when (shiftState) {
-            ShiftState.NOT_STARTED -> ControlBarLayoutConfig.START_ONLY
-            ShiftState.RUNNING -> if (isBreakActive) ControlBarLayoutConfig.BREAK_CONTROLS else ControlBarLayoutConfig.ACTIVE_CONTROLS
-            ShiftState.PAUSED -> ControlBarLayoutConfig.PAUSED_CONTROLS
-            ShiftState.FINISHED -> ControlBarLayoutConfig.RESET_ONLY
-        }
+        contract.resolveLayoutConfig(contract.resolveSemanticState(shiftState, isBreakActive))
 
     fun createTransition(
         motionScheme: VardiyaMotionScheme,
         motionPreference: MotionPreference
-    ): ContentTransform {
-        return if (motionPreference == MotionPreference.REDUCED) {
-            ContentTransform(
-                targetContentEnter = fadeIn(animationSpec = motionScheme.defaultEffectsSpec()),
-                initialContentExit = fadeOut(animationSpec = motionScheme.defaultEffectsSpec()),
-                sizeTransform = null
-            )
-        } else {
-            ContentTransform(
-                targetContentEnter = fadeIn(animationSpec = motionScheme.fastEffectsSpec()) +
-                    scaleIn(
-                        initialScale = 0.96f,
-                        animationSpec = motionScheme.fastSpatialSpec()
-                    ),
-                initialContentExit = fadeOut(animationSpec = motionScheme.fastEffectsSpec()) +
-                    scaleOut(
-                        targetScale = 0.96f,
-                        animationSpec = motionScheme.fastSpatialSpec()
-                    ),
-                sizeTransform = SizeTransform(
-                    clip = true,
-                    sizeAnimationSpec = { _, _ -> motionScheme.fastSpatialSpec() }
-                )
-            )
-        }
-    }
+    ): ContentTransform = contract.createTransition(motionScheme, motionPreference)
 }
 
 /**
@@ -123,7 +104,12 @@ fun VardiyaControlBar(
     val pillShape = RoundedCornerShape(percent = 50)
     val motionScheme = VardiyaTheme.motionScheme
     val motionPreference = VardiyaTheme.motionPreference
-    val layoutConfig = VardiyaControlBarMotion.resolveLayoutConfig(shiftState, isBreakActive)
+    val contract = VardiyaControlBarMotion.contract
+
+    val semanticState = remember(shiftState, isBreakActive) {
+        contract.resolveSemanticState(shiftState, isBreakActive)
+    }
+    val layoutConfig = contract.resolveLayoutConfig(semanticState)
 
     Surface(
         modifier = modifier
@@ -137,7 +123,7 @@ fun VardiyaControlBar(
         AnimatedContent(
             targetState = layoutConfig,
             transitionSpec = {
-                VardiyaControlBarMotion.createTransition(motionScheme, motionPreference)
+                contract.createTransition(motionScheme, motionPreference)
             },
             label = "control_bar_state_anim",
             modifier = Modifier.padding(horizontal = 6.dp, vertical = 6.dp)

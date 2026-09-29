@@ -40,6 +40,8 @@ import androidx.navigation3.ui.NavDisplay
 import com.example.androidapp.theme.motion.MotionPreference
 import com.example.androidapp.theme.motion.VardiyaMotionScheme
 import com.example.androidapp.theme.motion.VardiyaTheme
+import com.example.androidapp.theme.motion.contract.DefaultVardiyaNavigationMotionContract
+import com.example.androidapp.theme.motion.contract.VardiyaNavigationMotionContract
 import com.example.androidapp.vardiya.data.repository.LocalVardiyaRepository
 import com.example.androidapp.vardiya.ui.navigation.AnalyticsNavKey
 import com.example.androidapp.vardiya.ui.navigation.HistoryNavKey
@@ -138,6 +140,8 @@ fun VardiyaAppScaffold(
 
 /**
  * Navigation 3 Expressive Motion Transitions for Vardiya.
+ * Backed by [VardiyaNavigationMotionContract] to maintain architectural separation
+ * between semantic navigation contracts and container routing.
  *
  * Physics principles:
  * - Forward Navigation: Subtle 8% spatial offset paired with critically damped effects fade.
@@ -146,49 +150,20 @@ fun VardiyaAppScaffold(
  * - Reduced Motion: Immediate zero-offset fade without spatial movement.
  */
 object VardiyaNavTransitions {
-    const val SubtleSpatialOffsetFactor = 0.08f
+    val contract: VardiyaNavigationMotionContract = DefaultVardiyaNavigationMotionContract
+
+    val SubtleSpatialOffsetFactor: Float
+        get() = contract.resolveSpatialOffsetFactor()
 
     fun createForwardTransition(
         motionScheme: VardiyaMotionScheme,
         motionPreference: MotionPreference
-    ): ContentTransform {
-        return if (motionPreference == MotionPreference.REDUCED) {
-            fadeIn(animationSpec = motionScheme.defaultEffectsSpec()) togetherWith
-                fadeOut(animationSpec = motionScheme.defaultEffectsSpec())
-        } else {
-            (fadeIn(animationSpec = motionScheme.defaultEffectsSpec()) +
-                slideInHorizontally(
-                    animationSpec = motionScheme.defaultSpatialSpec(),
-                    initialOffsetX = { (it * SubtleSpatialOffsetFactor).toInt() }
-                )) togetherWith
-                (fadeOut(animationSpec = motionScheme.defaultEffectsSpec()) +
-                    slideOutHorizontally(
-                        animationSpec = motionScheme.defaultSpatialSpec(),
-                        targetOffsetX = { (-it * SubtleSpatialOffsetFactor).toInt() }
-                    ))
-        }
-    }
+    ): ContentTransform = contract.createForwardTransition(motionScheme, motionPreference)
 
     fun createPopTransition(
         motionScheme: VardiyaMotionScheme,
         motionPreference: MotionPreference
-    ): ContentTransform {
-        return if (motionPreference == MotionPreference.REDUCED) {
-            fadeIn(animationSpec = motionScheme.defaultEffectsSpec()) togetherWith
-                fadeOut(animationSpec = motionScheme.defaultEffectsSpec())
-        } else {
-            (fadeIn(animationSpec = motionScheme.defaultEffectsSpec()) +
-                slideInHorizontally(
-                    animationSpec = motionScheme.defaultSpatialSpec(),
-                    initialOffsetX = { (-it * SubtleSpatialOffsetFactor).toInt() }
-                )) togetherWith
-                (fadeOut(animationSpec = motionScheme.defaultEffectsSpec()) +
-                    slideOutHorizontally(
-                        animationSpec = motionScheme.defaultSpatialSpec(),
-                        targetOffsetX = { (it * SubtleSpatialOffsetFactor).toInt() }
-                    ))
-        }
-    }
+    ): ContentTransform = contract.createPopTransition(motionScheme, motionPreference)
 }
 
 /**

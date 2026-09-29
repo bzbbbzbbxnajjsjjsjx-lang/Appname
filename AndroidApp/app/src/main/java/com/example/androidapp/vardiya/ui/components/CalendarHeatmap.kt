@@ -2,6 +2,9 @@ package com.example.androidapp.vardiya.ui.components
 
 import androidx.compose.animation.animateColorAsState
 import com.example.androidapp.theme.motion.VardiyaTheme
+import com.example.androidapp.theme.motion.contract.DefaultVardiyaSelectionMotionContract
+import com.example.androidapp.theme.motion.contract.SelectionSemanticState
+import com.example.androidapp.theme.motion.contract.VardiyaSelectionMotionContract
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -30,6 +33,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.contentDescription
@@ -244,6 +248,10 @@ private fun CalendarDayCell(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val selectionContract: VardiyaSelectionMotionContract = DefaultVardiyaSelectionMotionContract
+    val semanticSelection = selectionContract.resolveSemanticState(isSelected)
+    val motionScheme = VardiyaTheme.motionScheme
+
     val heatIntensity = summary?.heatIntensity ?: 0
 
     val targetContainerColor = when (heatIntensity) {
@@ -255,7 +263,7 @@ private fun CalendarDayCell(
 
     val animatedColor by animateColorAsState(
         targetValue = targetContainerColor,
-        animationSpec = VardiyaTheme.motionScheme.fastEffectsSpec(),
+        animationSpec = selectionContract.resolveColorSpec(motionScheme),
         label = "cellColor"
     )
 
@@ -266,11 +274,27 @@ private fun CalendarDayCell(
         else -> MaterialTheme.colorScheme.onSurfaceVariant
     }
 
-    val borderStroke = if (isSelected) {
-        BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
+    val borderWidth = selectionContract.resolveBorderWidth(semanticSelection)
+    val borderStroke = if (borderWidth > 0.dp) {
+        BorderStroke(borderWidth, MaterialTheme.colorScheme.primary)
     } else {
         null
     }
+
+    val motionPreference = VardiyaTheme.motionPreference
+    val isReducedMotion = motionPreference == com.example.androidapp.theme.motion.MotionPreference.REDUCED
+
+    val animatedCornerRadius by androidx.compose.animation.core.animateDpAsState(
+        targetValue = if (isSelected && !isReducedMotion) 14.dp else 10.dp,
+        animationSpec = motionScheme.fastSpatialSpec(),
+        label = "cellCornerRadius"
+    )
+
+    val animatedCellScale by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (isSelected && !isReducedMotion) 1.08f else 1.0f,
+        animationSpec = motionScheme.fastSpatialSpec(),
+        label = "cellScale"
+    )
 
     val cellDescription = buildString {
         append("$dayNumber ")
@@ -289,11 +313,15 @@ private fun CalendarDayCell(
         onClick = onClick,
         modifier = modifier
             .aspectRatio(1f)
+            .graphicsLayer {
+                scaleX = animatedCellScale
+                scaleY = animatedCellScale
+            }
             .semantics {
                 contentDescription = cellDescription
                 this.selected = isSelected
             },
-        shape = RoundedCornerShape(10.dp),
+        shape = RoundedCornerShape(animatedCornerRadius),
         color = animatedColor,
         border = borderStroke
     ) {

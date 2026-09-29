@@ -5,40 +5,33 @@ import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.DurationBasedAnimationSpec
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
 import com.example.androidapp.theme.motion.MotionPreference
 import com.example.androidapp.theme.motion.VardiyaMotionScheme
+import com.example.androidapp.theme.motion.contract.DefaultVardiyaExpandableContainerMotionContract
+import com.example.androidapp.theme.motion.contract.ExpandableSemanticState
+import com.example.androidapp.theme.motion.contract.VardiyaExpandableContainerMotionContract
 import com.example.androidapp.vardiya.domain.model.ShiftState
 
 /**
  * Reusable motion specifications for expandable sections (Level 3 Supporting Motion).
- * Used across Settings options, Calendar Heatmap visibility, and History item details.
+ * Backed by [VardiyaExpandableContainerMotionContract] to separate semantic state
+ * from UI container expansion.
  */
 object VardiyaExpandableMotion {
+    val contract: VardiyaExpandableContainerMotionContract = DefaultVardiyaExpandableContainerMotionContract
+
+    fun resolveSemanticState(isExpanded: Boolean): ExpandableSemanticState =
+        contract.resolveSemanticState(isExpanded)
+
     fun createEnterTransition(
         motionScheme: VardiyaMotionScheme,
         motionPreference: MotionPreference
-    ): EnterTransition =
-        if (motionPreference == MotionPreference.REDUCED) {
-            fadeIn(animationSpec = motionScheme.defaultEffectsSpec())
-        } else {
-            expandVertically(animationSpec = motionScheme.defaultSpatialSpec()) +
-                fadeIn(animationSpec = motionScheme.defaultEffectsSpec())
-        }
+    ): EnterTransition = contract.createEnterTransition(motionScheme, motionPreference)
 
     fun createExitTransition(
         motionScheme: VardiyaMotionScheme,
         motionPreference: MotionPreference
-    ): ExitTransition =
-        if (motionPreference == MotionPreference.REDUCED) {
-            fadeOut(animationSpec = motionScheme.defaultEffectsSpec())
-        } else {
-            shrinkVertically(animationSpec = motionScheme.defaultSpatialSpec()) +
-                fadeOut(animationSpec = motionScheme.defaultEffectsSpec())
-        }
+    ): ExitTransition = contract.createExitTransition(motionScheme, motionPreference)
 }
 
 /**
@@ -48,6 +41,8 @@ object VardiyaExpandableMotion {
 object StateBadgeMotion {
     const val PulseInitialAlpha: Float = 0.35f
     const val PulseTargetAlpha: Float = 1.0f
+    const val PulseInitialScale: Float = 0.90f
+    const val PulseTargetScale: Float = 1.10f
     const val PulsePeriodMillis: Int = 1200
 
     /**

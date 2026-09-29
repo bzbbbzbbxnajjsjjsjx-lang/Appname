@@ -35,6 +35,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -47,6 +48,9 @@ import androidx.compose.ui.unit.min
 import androidx.compose.ui.unit.sp
 import com.example.androidapp.theme.motion.MotionPreference
 import com.example.androidapp.theme.motion.VardiyaTheme
+import com.example.androidapp.theme.motion.contract.DefaultVardiyaHeroMotionContract
+import com.example.androidapp.theme.motion.contract.HeroSemanticState
+import com.example.androidapp.theme.motion.contract.VardiyaHeroMotionContract
 import com.example.androidapp.vardiya.domain.model.ShiftState
 import kotlin.math.PI
 import kotlin.math.cos
@@ -58,24 +62,29 @@ import kotlinx.coroutines.isActive
 
 /**
  * Pure motion mapping functions for [CircularWavyProgressHero].
- * Extracted to allow deterministic unit testing of physical targets, speeds, and accessibility states.
+ * Driven by [VardiyaHeroMotionContract] to maintain architectural separation
+ * between semantic state mapping and UI canvas rendering.
  */
 object CircularWavyHeroMotion {
+    val contract: VardiyaHeroMotionContract = DefaultVardiyaHeroMotionContract
+
+    fun resolveSemanticState(
+        shiftState: ShiftState,
+        isOvertimeActive: Boolean,
+        isBreakActive: Boolean
+    ): HeroSemanticState = contract.resolveSemanticState(shiftState, isOvertimeActive, isBreakActive)
+
     /**
      * Resolves the target wave amplitude in [Dp] based on shift state, overtime, and break.
-     * Matches the established Vardiya 3.0.2 production geometry.
+     * Preserves established production geometry via [VardiyaHeroMotionContract].
      */
     fun resolveTargetAmplitude(
         shiftState: ShiftState,
         isOvertimeActive: Boolean,
         isBreakActive: Boolean
-    ): Dp = when {
-        isBreakActive -> 5.0.dp
-        isOvertimeActive -> 7.0.dp
-        shiftState == ShiftState.RUNNING -> 6.0.dp
-        shiftState == ShiftState.PAUSED -> 4.5.dp
-        shiftState == ShiftState.FINISHED -> 5.0.dp
-        else -> 5.0.dp
+    ): Dp {
+        val semanticState = resolveSemanticState(shiftState, isOvertimeActive, isBreakActive)
+        return contract.resolveTargetAmplitude(semanticState)
     }
 
     /**
@@ -86,17 +95,32 @@ object CircularWavyHeroMotion {
     fun isWavePhaseActive(
         shiftState: ShiftState,
         isBreakActive: Boolean,
-        motionPreference: MotionPreference
-    ): Boolean =
-        motionPreference != MotionPreference.REDUCED &&
-        shiftState == ShiftState.RUNNING &&
-        !isBreakActive
+        motionPreference: MotionPreference,
+        isOvertimeActive: Boolean = false
+    ): Boolean {
+        val semanticState = resolveSemanticState(shiftState, isOvertimeActive, isBreakActive)
+        return contract.isWavePhaseActive(semanticState, motionPreference)
+    }
 
     /**
      * Resolves the full 360-degree wave cycle duration in milliseconds.
      */
-    fun resolveWaveCycleDurationMs(isOvertimeActive: Boolean): Long =
-        if (isOvertimeActive) 1800L else 2400L
+    fun resolveWaveCycleDurationMs(isOvertimeActive: Boolean): Long {
+        val semanticState = if (isOvertimeActive) HeroSemanticState.OVERTIME else HeroSemanticState.RUNNING
+        return contract.resolveWaveCycleDurationMs(semanticState)
+    }
+
+    /**
+     * Resolves the container volumetric scale spring for the Hero.
+     */
+    fun resolveContainerScale(
+        shiftState: ShiftState,
+        isOvertimeActive: Boolean,
+        isBreakActive: Boolean
+    ): Float {
+        val semanticState = resolveSemanticState(shiftState, isOvertimeActive, isBreakActive)
+        return contract.resolveContainerScale(semanticState)
+    }
 
     /**
      * Resolves the semantic active hero color for the progress wave and typography.
@@ -106,11 +130,9 @@ object CircularWavyHeroMotion {
         isOvertimeActive: Boolean,
         isBreakActive: Boolean,
         colorScheme: ColorScheme
-    ): Color = when {
-        shiftState == ShiftState.FINISHED -> colorScheme.secondary
-        shiftState == ShiftState.PAUSED || isBreakActive || isOvertimeActive -> colorScheme.tertiary
-        shiftState == ShiftState.RUNNING -> colorScheme.primary
-        else -> colorScheme.primary
+    ): Color {
+        val semanticState = resolveSemanticState(shiftState, isOvertimeActive, isBreakActive)
+        return contract.resolveHeroActiveColor(semanticState, colorScheme)
     }
 }
 
@@ -144,41 +166,48 @@ fun CircularWavyProgressHero(
 ) {
     val motionScheme = VardiyaTheme.motionScheme
     val motionPreference = VardiyaTheme.motionPreference
+    val contract = CircularWavyHeroMotion.contract
+
+    val semanticState = remember(shiftState, isOvertimeActive, isBreakActive) {
+        contract.resolveSemanticState(shiftState, isOvertimeActive, isBreakActive)
+    }
 
     // 1. Physical Progress Motion (Expressive Spatial Spring)
     val animatedProgress by animateFloatAsState(
         targetValue = progress.coerceIn(0f, 1f),
-        animationSpec = motionScheme.defaultSpatialSpec(),
+        animationSpec = contract.resolveProgressSpec(motionScheme),
         label = "wavy_progress_anim"
     )
 
     // 2. Physical Amplitude Motion (Expressive Spatial Spring Settling)
-    val targetAmplitude = CircularWavyHeroMotion.resolveTargetAmplitude(
-        shiftState = shiftState,
-        isOvertimeActive = isOvertimeActive,
-        isBreakActive = isBreakActive
-    )
+    val targetAmplitude = contract.resolveTargetAmplitude(semanticState)
     val animatedAmplitudeDp by animateDpAsState(
         targetValue = targetAmplitude,
-        animationSpec = motionScheme.defaultSpatialSpec(),
+        animationSpec = contract.resolveAmplitudeSpec(motionScheme),
         label = "wavy_amplitude_anim"
     )
 
     // 3. Critically Damped State Color Transition (Effects Spring)
-    val targetActiveColor = CircularWavyHeroMotion.resolveHeroActiveColor(
-        shiftState = shiftState,
-        isOvertimeActive = isOvertimeActive,
-        isBreakActive = isBreakActive,
+    val targetActiveColor = contract.resolveHeroActiveColor(
+        semanticState = semanticState,
         colorScheme = MaterialTheme.colorScheme
     )
     val animatedActiveColor by animateColorAsState(
         targetValue = targetActiveColor,
-        animationSpec = motionScheme.defaultEffectsSpec(),
+        animationSpec = contract.resolveColorSpec(motionScheme),
         label = "wavy_active_color_anim"
     )
 
     // 4. Traveling Wave Phase Engine
     var phaseAccumulator by remember { mutableFloatStateOf(0f) }
+
+    // 5. Container Volumetric Scale Spring
+    val targetContainerScale = contract.resolveContainerScale(semanticState)
+    val animatedContainerScale by animateFloatAsState(
+        targetValue = targetContainerScale,
+        animationSpec = motionScheme.fastSpatialSpec(),
+        label = "hero_container_scale_anim"
+    )
 
     // Reset phase cleanly to 12 o'clock when shift resets to NOT_STARTED
     LaunchedEffect(shiftState) {
@@ -187,14 +216,13 @@ fun CircularWavyProgressHero(
         }
     }
 
-    val isWaveActive = CircularWavyHeroMotion.isWavePhaseActive(
-        shiftState = shiftState,
-        isBreakActive = isBreakActive,
+    val isWaveActive = contract.isWavePhaseActive(
+        semanticState = semanticState,
         motionPreference = motionPreference
     )
 
     if (isWaveActive) {
-        val cycleDurationMs = CircularWavyHeroMotion.resolveWaveCycleDurationMs(isOvertimeActive)
+        val cycleDurationMs = contract.resolveWaveCycleDurationMs(semanticState)
         LaunchedEffect(cycleDurationMs) {
             val cycleDurationNanos = cycleDurationMs * 1_000_000L
             val twoPi = (2.0 * PI).toFloat()
@@ -226,13 +254,17 @@ fun CircularWavyProgressHero(
             },
         contentAlignment = Alignment.Center
     ) {
-        // Responsive size: fits comfortably on small phones, tablets, and large screens
-        val indicatorSize = min(min(maxWidth, maxHeight), 280.dp)
+        // Responsive size: prominent visual anchor fitting comfortably across screens
+        val indicatorSize = min(min(maxWidth, maxHeight), 295.dp)
 
         Box(
             modifier = Modifier
                 .size(indicatorSize)
-                .aspectRatio(1f),
+                .aspectRatio(1f)
+                .graphicsLayer {
+                    scaleX = animatedContainerScale
+                    scaleY = animatedContainerScale
+                },
             contentAlignment = Alignment.Center
         ) {
             Canvas(modifier = Modifier.fillMaxSize()) {

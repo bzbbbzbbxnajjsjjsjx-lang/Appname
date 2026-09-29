@@ -38,6 +38,7 @@ class MainActivity : ComponentActivity() {
             val uiState by vardiyaViewModel.uiState.collectAsState()
 
             AndroidAppTheme(dynamicColor = uiState.isDynamicColorEnabled) {
+                var isLaunched by remember { mutableStateOf(false) }
                 var currentDestination by remember { mutableStateOf(AppDestination.VARDIYA) }
 
                 BackHandler(enabled = currentDestination == AppDestination.CALCULATOR) {
@@ -45,15 +46,21 @@ class MainActivity : ComponentActivity() {
                 }
 
                 Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                    when (currentDestination) {
-                        AppDestination.VARDIYA -> {
-                            VardiyaAppScaffold(
-                                viewModel = vardiyaViewModel,
-                                onNavigateToCalculator = { currentDestination = AppDestination.CALCULATOR }
-                            )
-                        }
-                        AppDestination.CALCULATOR -> {
-                            CalculatorScreen()
+                    if (!isLaunched) {
+                        com.example.androidapp.ui.startup.VardiyaLaunchScreen(
+                            onLaunchComplete = { isLaunched = true }
+                        )
+                    } else {
+                        when (currentDestination) {
+                            AppDestination.VARDIYA -> {
+                                VardiyaAppScaffold(
+                                    viewModel = vardiyaViewModel,
+                                    onNavigateToCalculator = { currentDestination = AppDestination.CALCULATOR }
+                                )
+                            }
+                            AppDestination.CALCULATOR -> {
+                                CalculatorScreen()
+                            }
                         }
                     }
                 }

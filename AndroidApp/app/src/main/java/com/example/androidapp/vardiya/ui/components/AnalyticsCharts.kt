@@ -36,6 +36,7 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
@@ -175,11 +176,21 @@ fun WeeklyBarChart(
 
                         Spacer(modifier = Modifier.height(4.dp))
 
+                        val barScale by animateFloatAsState(
+                            targetValue = if (isSelected) 1.08f else 1.0f,
+                            animationSpec = VardiyaTheme.motionScheme.fastSpatialSpec(),
+                            label = "barScale_$index"
+                        )
+
                         // Custom Canvas Bar
                         Box(
                             modifier = Modifier
                                 .weight(1f)
-                                .width(22.dp),
+                                .width(22.dp)
+                                .graphicsLayer {
+                                    scaleX = barScale
+                                    scaleY = barScale
+                                },
                             contentAlignment = Alignment.BottomCenter
                         ) {
                             Canvas(modifier = Modifier.fillMaxSize()) {

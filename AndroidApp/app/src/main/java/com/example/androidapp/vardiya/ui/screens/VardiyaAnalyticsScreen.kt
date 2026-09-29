@@ -287,13 +287,35 @@ private fun AnalyticsChartSection(
         )
 
         val motionScheme = VardiyaTheme.motionScheme
+        val motionPreference = VardiyaTheme.motionPreference
+        val isReducedMotion = motionPreference == com.example.androidapp.theme.motion.MotionPreference.REDUCED
 
-        // Animated Chart View
+        // Animated Chart View with Directional Spatial Transition
         AnimatedContent(
             targetState = uiState.analyticsPeriod,
             transitionSpec = {
-                fadeIn(animationSpec = motionScheme.defaultEffectsSpec()) togetherWith
-                    fadeOut(animationSpec = motionScheme.defaultEffectsSpec())
+                if (isReducedMotion) {
+                    fadeIn(animationSpec = motionScheme.defaultEffectsSpec()) togetherWith
+                        fadeOut(animationSpec = motionScheme.defaultEffectsSpec())
+                } else if (targetState == AnalyticsPeriod.MONTHLY) {
+                    (androidx.compose.animation.slideInHorizontally(
+                        animationSpec = motionScheme.defaultSpatialSpec(),
+                        initialOffsetX = { it / 4 }
+                    ) + fadeIn(animationSpec = motionScheme.defaultEffectsSpec())) togetherWith
+                        (androidx.compose.animation.slideOutHorizontally(
+                            animationSpec = motionScheme.defaultSpatialSpec(),
+                            targetOffsetX = { -it / 4 }
+                        ) + fadeOut(animationSpec = motionScheme.defaultEffectsSpec()))
+                } else {
+                    (androidx.compose.animation.slideInHorizontally(
+                        animationSpec = motionScheme.defaultSpatialSpec(),
+                        initialOffsetX = { -it / 4 }
+                    ) + fadeIn(animationSpec = motionScheme.defaultEffectsSpec())) togetherWith
+                        (androidx.compose.animation.slideOutHorizontally(
+                            animationSpec = motionScheme.defaultSpatialSpec(),
+                            targetOffsetX = { it / 4 }
+                        ) + fadeOut(animationSpec = motionScheme.defaultEffectsSpec()))
+                }
             },
             label = "analyticsChartTransition"
         ) { targetPeriod ->
