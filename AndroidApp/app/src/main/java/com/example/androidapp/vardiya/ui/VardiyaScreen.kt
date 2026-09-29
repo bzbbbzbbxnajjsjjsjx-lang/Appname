@@ -156,7 +156,7 @@ fun VardiyaScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(horizontal = 24.dp, vertical = 16.dp),
+                        .padding(horizontal = 16.dp, vertical = 16.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.SpaceBetween
                 ) {
@@ -206,9 +206,6 @@ fun VardiyaScreen(
                             modifier = Modifier.padding(vertical = 4.dp)
                         )
 
-                        Spacer(modifier = Modifier.height(16.dp))
-
-                        RatesBreakdownCard(uiState = uiState)
                     }
 
                     // Bottom: Material 3 Expressive Floating Control Bar
@@ -298,9 +295,6 @@ fun VardiyaScreen(
                             modifier = Modifier.padding(vertical = 4.dp)
                         )
 
-                        Spacer(modifier = Modifier.height(16.dp))
-
-                        RatesBreakdownCard(uiState = uiState)
                     }
 
                     // Right Column: Shift Status Overview & Control Center
@@ -588,56 +582,6 @@ private fun TemplateSelectorChip(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
             )
-        }
-    }
-}
-
-@Composable
-private fun RatesBreakdownCard(
-    uiState: VardiyaUiState,
-    modifier: Modifier = Modifier
-) {
-    Card(
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
-        ),
-        shape = RoundedCornerShape(20.dp),
-        modifier = modifier.fillMaxWidth(0.92f)
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 12.dp, horizontal = 20.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            Text(
-                text = uiState.earnings.formattedHourlyRate,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-
-            Text(
-                text = uiState.earnings.formattedMinuteRate,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-
-            Text(
-                text = uiState.earnings.formattedSecondRate,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
-            )
-
-            if (uiState.isOvertimeActive || uiState.earnings.overtimeDurationMs > 0L) {
-                Text(
-                    text = "Mesai: ${uiState.earnings.formattedOvertimeEarned}",
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary
-                )
-            }
         }
     }
 }

@@ -6,6 +6,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -27,6 +28,7 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.androidapp.theme.VardiyaIcons
@@ -39,6 +41,7 @@ import com.example.androidapp.vardiya.domain.model.ShiftState
  * - Start / Pause / Resume / Finish
  * - Fast Break toggle (Mola Ver / Molayı Bitir)
  * - Tonal feedback, accessibility semantics, and haptic response.
+ * - Single-line text layout preventing awkward syllable/word breaks on all screen sizes.
  */
 @Composable
 fun VardiyaControlBar(
@@ -53,7 +56,7 @@ fun VardiyaControlBar(
     modifier: Modifier = Modifier
 ) {
     val view = LocalView.current
-    val buttonHeight = 58.dp
+    val buttonHeight = 56.dp
     val pillShape = RoundedCornerShape(percent = 50)
 
     Surface(
@@ -69,7 +72,7 @@ fun VardiyaControlBar(
             targetState = Pair(shiftState, isBreakActive),
             transitionSpec = { fadeIn() togetherWith fadeOut() },
             label = "control_bar_state_anim",
-            modifier = Modifier.padding(8.dp)
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 6.dp)
         ) { (state, inBreak) ->
             when (state) {
                 ShiftState.NOT_STARTED -> {
@@ -79,6 +82,7 @@ fun VardiyaControlBar(
                             onStart()
                         },
                         shape = pillShape,
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 0.dp),
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(buttonHeight)
@@ -96,6 +100,9 @@ fun VardiyaControlBar(
                         Spacer(modifier = Modifier.width(10.dp))
                         Text(
                             text = "VARDİYAYI BAŞLAT",
+                            maxLines = 1,
+                            softWrap = false,
+                            overflow = TextOverflow.Clip,
                             style = MaterialTheme.typography.titleMedium.copy(
                                 fontWeight = FontWeight.Bold,
                                 letterSpacing = 0.5.sp
@@ -118,6 +125,7 @@ fun VardiyaControlBar(
                                     onToggleBreak()
                                 },
                                 shape = pillShape,
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
                                 modifier = Modifier
                                     .weight(1.3f)
                                     .height(buttonHeight)
@@ -130,11 +138,14 @@ fun VardiyaControlBar(
                                 Icon(
                                     imageVector = VardiyaIcons.Play,
                                     contentDescription = null,
-                                    modifier = Modifier.size(20.dp)
+                                    modifier = Modifier.size(18.dp)
                                 )
-                                Spacer(modifier = Modifier.width(8.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
                                 Text(
                                     text = "MOLAYI BİTİR",
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    overflow = TextOverflow.Clip,
                                     style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
                                 )
                             }
@@ -145,6 +156,7 @@ fun VardiyaControlBar(
                                     onFinish()
                                 },
                                 shape = pillShape,
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
                                 modifier = Modifier
                                     .weight(0.9f)
                                     .height(buttonHeight)
@@ -162,15 +174,18 @@ fun VardiyaControlBar(
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
                                     text = "BİTİR",
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    overflow = TextOverflow.Clip,
                                     style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold)
                                 )
                             }
                         }
                     } else {
-                        // Normal active: Pause, Quick Break, Finish
+                        // Normal active: Pause, Quick Break, Finish (single-line, no text breaking)
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Button(
@@ -179,8 +194,9 @@ fun VardiyaControlBar(
                                     onPause()
                                 },
                                 shape = pillShape,
+                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp),
                                 modifier = Modifier
-                                    .weight(1f)
+                                    .weight(1.15f)
                                     .height(buttonHeight)
                                     .semantics { contentDescription = "Vardiyayı duraklat" },
                                 colors = ButtonDefaults.buttonColors(
@@ -191,12 +207,18 @@ fun VardiyaControlBar(
                                 Icon(
                                     imageVector = VardiyaIcons.Pause,
                                     contentDescription = null,
-                                    modifier = Modifier.size(18.dp)
+                                    modifier = Modifier.size(16.dp)
                                 )
-                                Spacer(modifier = Modifier.width(6.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
                                 Text(
                                     text = "DURAKLAT",
-                                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold)
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    overflow = TextOverflow.Clip,
+                                    style = MaterialTheme.typography.labelMedium.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        letterSpacing = (-0.2).sp
+                                    )
                                 )
                             }
 
@@ -206,8 +228,9 @@ fun VardiyaControlBar(
                                     onToggleBreak()
                                 },
                                 shape = pillShape,
+                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp),
                                 modifier = Modifier
-                                    .weight(1f)
+                                    .weight(0.9f)
                                     .height(buttonHeight)
                                     .semantics { contentDescription = "Mola başlat" },
                                 colors = ButtonDefaults.buttonColors(
@@ -218,12 +241,18 @@ fun VardiyaControlBar(
                                 Icon(
                                     imageVector = VardiyaIcons.Coffee,
                                     contentDescription = null,
-                                    modifier = Modifier.size(18.dp)
+                                    modifier = Modifier.size(16.dp)
                                 )
-                                Spacer(modifier = Modifier.width(6.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
                                 Text(
                                     text = "MOLA",
-                                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold)
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    overflow = TextOverflow.Clip,
+                                    style = MaterialTheme.typography.labelMedium.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        letterSpacing = 0.sp
+                                    )
                                 )
                             }
 
@@ -233,8 +262,9 @@ fun VardiyaControlBar(
                                     onFinish()
                                 },
                                 shape = pillShape,
+                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp),
                                 modifier = Modifier
-                                    .weight(1f)
+                                    .weight(0.95f)
                                     .height(buttonHeight)
                                     .semantics { contentDescription = "Vardiyayı bitir" },
                                 colors = ButtonDefaults.buttonColors(
@@ -245,12 +275,18 @@ fun VardiyaControlBar(
                                 Icon(
                                     imageVector = VardiyaIcons.Stop,
                                     contentDescription = null,
-                                    modifier = Modifier.size(18.dp)
+                                    modifier = Modifier.size(16.dp)
                                 )
-                                Spacer(modifier = Modifier.width(6.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
                                 Text(
                                     text = "BİTİR",
-                                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold)
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    overflow = TextOverflow.Clip,
+                                    style = MaterialTheme.typography.labelMedium.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        letterSpacing = 0.sp
+                                    )
                                 )
                             }
                         }
@@ -269,6 +305,7 @@ fun VardiyaControlBar(
                                 onResume()
                             },
                             shape = pillShape,
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
                             modifier = Modifier
                                 .weight(1.3f)
                                 .height(buttonHeight)
@@ -281,11 +318,14 @@ fun VardiyaControlBar(
                             Icon(
                                 imageVector = VardiyaIcons.Play,
                                 contentDescription = null,
-                                modifier = Modifier.size(20.dp)
+                                modifier = Modifier.size(18.dp)
                             )
-                            Spacer(modifier = Modifier.width(8.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
                             Text(
                                 text = "DEVAM ET",
+                                maxLines = 1,
+                                softWrap = false,
+                                overflow = TextOverflow.Clip,
                                 style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
                             )
                         }
@@ -296,6 +336,7 @@ fun VardiyaControlBar(
                                 onFinish()
                             },
                             shape = pillShape,
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
                             modifier = Modifier
                                 .weight(0.9f)
                                 .height(buttonHeight)
@@ -313,6 +354,9 @@ fun VardiyaControlBar(
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
                                 text = "BİTİR",
+                                maxLines = 1,
+                                softWrap = false,
+                                overflow = TextOverflow.Clip,
                                 style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold)
                             )
                         }
@@ -326,6 +370,7 @@ fun VardiyaControlBar(
                             onReset()
                         },
                         shape = pillShape,
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 0.dp),
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(buttonHeight)
@@ -343,6 +388,9 @@ fun VardiyaControlBar(
                         Spacer(modifier = Modifier.width(10.dp))
                         Text(
                             text = "YENİ VARDİYA",
+                            maxLines = 1,
+                            softWrap = false,
+                            overflow = TextOverflow.Clip,
                             style = MaterialTheme.typography.titleMedium.copy(
                                 fontWeight = FontWeight.Bold,
                                 letterSpacing = 0.5.sp

@@ -1,7 +1,12 @@
 package com.example.androidapp.vardiya.ui.components
 
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
@@ -24,9 +29,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -45,11 +50,17 @@ import kotlin.math.roundToInt
 import kotlin.math.sin
 
 /**
- * Large circular progress indicator with an organic, wavy edge according to Material 3 Expressive.
- * - Dynamic wave frequency, amplitude, and color adapting to shift state, overtime, and active break.
- * - Clockwise progression starting from 12 o'clock (-90°).
- * - Smoothly animates on progress changes without continuous idle CPU consumption.
- * - Keeps center area clean, legible, and accessible.
+ * Custom Canvas Wavy Progress Hero Indicator modeled after Material 3 Expressive.
+ *
+ * NOTE: The official AndroidX Compose Material 3 CircularWavyProgressIndicator API is not available
+ * in Material 3 1.4.0 (introduced in 1.5.0-alpha+). In strict compliance with zero unauthorized dependency
+ * upgrades, this component provides a dependency-free custom Canvas implementation:
+ * - Mathematical sinusoidal wave running along the circular track circumference: r(θ) = R + A * sin(n * θ - φ)
+ * - Determinate progress arc smoothly advancing clockwise from 12 o'clock (-90°).
+ * - Full 360° wavy track visible in muted track color, establishing the expressive silhouette.
+ * - Dynamic, traveling wave animation (waveSpeed) running exclusively when shift is RUNNING.
+ * - Zero CPU / idle battery consumption when PAUSED, FINISHED, or NOT_STARTED.
+ * - Preserves all hero typography, labels, duration, percentage, and accessibility semantics.
  */
 @Composable
 fun CircularWavyProgressHero(
@@ -64,32 +75,54 @@ fun CircularWavyProgressHero(
     breakDurationText: String? = null,
     isNightShiftActive: Boolean = false
 ) {
-    // Smoothly animate progress without continuous idle ticker loop
+    // Smoothly animate progress updates (e.g. per second increments)
     val animatedProgress by animateFloatAsState(
         targetValue = progress.coerceIn(0f, 1f),
         animationSpec = tween(durationMillis = 650, easing = FastOutSlowInEasing),
         label = "wavy_progress_anim"
     )
 
+    // Animated traveling wave phase (runs ONLY when RUNNING, zero idle overhead in other states)
+    val isRunning = shiftState == ShiftState.RUNNING
+    val phaseAnimation: Float = if (isRunning) {
+        val transition = rememberInfiniteTransition(label = "wavy_phase_transition")
+        val phase by transition.animateFloat(
+            initialValue = 0f,
+            targetValue = (2 * PI).toFloat(),
+            animationSpec = infiniteRepeatable(
+                animation = tween(
+                    durationMillis = if (isOvertimeActive) 1800 else 2400,
+                    easing = LinearEasing
+                ),
+                repeatMode = RepeatMode.Restart
+            ),
+            label = "wavy_phase"
+        )
+        phase
+    } else {
+        0f
+    }
+
+    // Material 3 Expressive state-adaptive colors
     val activeColor = when {
         shiftState == ShiftState.FINISHED -> MaterialTheme.colorScheme.secondary
-        shiftState == ShiftState.PAUSED -> MaterialTheme.colorScheme.tertiary
-        isBreakActive -> MaterialTheme.colorScheme.tertiary
-        isOvertimeActive -> MaterialTheme.colorScheme.tertiary
+        shiftState == ShiftState.PAUSED || isBreakActive || isOvertimeActive -> MaterialTheme.colorScheme.tertiary
         shiftState == ShiftState.RUNNING -> MaterialTheme.colorScheme.primary
         else -> MaterialTheme.colorScheme.primary
     }
 
-    val (waveAmplitudeDp, waveCount) = when {
-        shiftState == ShiftState.FINISHED -> Pair(2.5.dp, 18.0)
-        shiftState == ShiftState.PAUSED -> Pair(1.2.dp, 14.0)
-        isBreakActive -> Pair(2.0.dp, 14.0)
-        isOvertimeActive -> Pair(4.2.dp, 20.0)
-        shiftState == ShiftState.RUNNING -> Pair(3.0.dp, 16.0)
-        else -> Pair(2.5.dp, 18.0)
-    }
+    // Track color: visible against surface, creating the expressive wavy guide ring
+    val trackColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.85f)
 
-    val trackColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.75f)
+    // Amplitude: distinct, pronounced wave height per state
+    val waveAmplitudeDp = when {
+        isOvertimeActive -> 7.5.dp
+        shiftState == ShiftState.RUNNING -> 6.5.dp
+        isBreakActive -> 5.5.dp
+        shiftState == ShiftState.PAUSED -> 5.0.dp
+        shiftState == ShiftState.FINISHED -> 5.5.dp
+        else -> 5.5.dp
+    }
 
     BoxWithConstraints(
         modifier = modifier
@@ -99,7 +132,7 @@ fun CircularWavyProgressHero(
             },
         contentAlignment = Alignment.Center
     ) {
-        // Responsive size: fits comfortably on small and large screens
+        // Responsive size: fits comfortably on small phones, tablets, and large screens
         val indicatorSize = min(min(maxWidth, maxHeight), 280.dp)
 
         Box(
@@ -109,88 +142,83 @@ fun CircularWavyProgressHero(
             contentAlignment = Alignment.Center
         ) {
             Canvas(modifier = Modifier.fillMaxSize()) {
-                val strokeWidthPx = 16.dp.toPx()
+                val strokeWidthPx = 11.dp.toPx()
+                val trackStrokeWidthPx = 10.dp.toPx()
                 val waveAmplitudePx = waveAmplitudeDp.toPx()
                 val centerOffset = Offset(size.width / 2f, size.height / 2f)
-                val baseRadius = (min(size.width, size.height) - strokeWidthPx * 2f - waveAmplitudePx * 2f) / 2f
+
+                // Margin for outer wave peaks + stroke width + safety padding
+                val outerPeakOffset = waveAmplitudePx + (strokeWidthPx / 2f) + 4.dp.toPx()
+                val baseRadius = (min(size.width, size.height) / 2f) - outerPeakOffset
 
                 if (baseRadius <= 0f) return@Canvas
 
-                // 1. Draw smooth background track
-                drawCircle(
+                // 12 waves around 360° (30° per wave cycle, aligning with clock hour marks)
+                val waveFrequency = 12
+                val phase = phaseAnimation
+                val startAngleRad = -PI / 2.0 // 12 o'clock
+
+                // 1. Draw the complete 360° circular wavy track
+                val trackSteps = 360
+                val trackPath = Path()
+                for (i in 0..trackSteps) {
+                    val fraction = i.toDouble() / trackSteps.toDouble()
+                    val angle = startAngleRad + fraction * 2.0 * PI
+                    val waveOffset = waveAmplitudePx * sin(waveFrequency * angle - phase)
+                    val r = baseRadius + waveOffset
+                    val x = (centerOffset.x + r * cos(angle)).toFloat()
+                    val y = (centerOffset.y + r * sin(angle)).toFloat()
+                    if (i == 0) {
+                        trackPath.moveTo(x, y)
+                    } else {
+                        trackPath.lineTo(x, y)
+                    }
+                }
+                trackPath.close()
+
+                drawPath(
+                    path = trackPath,
                     color = trackColor,
-                    radius = baseRadius,
-                    center = centerOffset,
-                    style = Stroke(width = strokeWidthPx * 0.7f, cap = StrokeCap.Round)
+                    style = Stroke(
+                        width = trackStrokeWidthPx,
+                        cap = StrokeCap.Round,
+                        join = StrokeJoin.Round
+                    )
                 )
 
-                // 2. Draw organic wavy progress arc
+                // 2. Draw the active determinate wavy progress arc
                 val currentProgress = animatedProgress
                 if (currentProgress > 0.005f) {
-                    val startAngleRad = -PI / 2.0 // 12 o'clock
-                    val sweepAngleRad = currentProgress * 2.0 * PI
-                    val sampleSteps = max(24, (currentProgress * 180.0).roundToInt())
+                    val sweepAngleRad = (currentProgress * 2.0 * PI).coerceIn(0.0, 2.0 * PI)
+                    val activeSteps = max(8, (currentProgress * 360.0).roundToInt())
+                    val activePath = Path()
 
-                    val path = Path()
-
-                    // Outer wavy contour (clockwise)
-                    for (i in 0..sampleSteps) {
-                        val fraction = i.toDouble() / sampleSteps.toDouble()
+                    for (i in 0..activeSteps) {
+                        val fraction = i.toDouble() / activeSteps.toDouble()
                         val angle = startAngleRad + fraction * sweepAngleRad
-                        val waveOffset = waveAmplitudePx * sin(waveCount * angle)
-                        val rOuter = baseRadius + (strokeWidthPx / 2f) + waveOffset
-                        val x = (centerOffset.x + rOuter * cos(angle)).toFloat()
-                        val y = (centerOffset.y + rOuter * sin(angle)).toFloat()
-
+                        val waveOffset = waveAmplitudePx * sin(waveFrequency * angle - phase)
+                        val r = baseRadius + waveOffset
+                        val x = (centerOffset.x + r * cos(angle)).toFloat()
+                        val y = (centerOffset.y + r * sin(angle)).toFloat()
                         if (i == 0) {
-                            path.moveTo(x, y)
+                            activePath.moveTo(x, y)
                         } else {
-                            path.lineTo(x, y)
+                            activePath.lineTo(x, y)
                         }
                     }
 
-                    // Forward rounded tip at leading edge
-                    val endAngle = startAngleRad + sweepAngleRad
-                    val endWaveOffset = waveAmplitudePx * sin(waveCount * endAngle)
-                    val rInnerEnd = baseRadius - (strokeWidthPx / 2f) - endWaveOffset
-                    val xInnerEnd = (centerOffset.x + rInnerEnd * cos(endAngle)).toFloat()
-                    val yInnerEnd = (centerOffset.y + rInnerEnd * sin(endAngle)).toFloat()
-
-                    // Quadratic curve around the tip
-                    val rMidEnd = baseRadius
-                    val tipExtension = strokeWidthPx * 0.35f
-                    val ctrlX = (centerOffset.x + (rMidEnd + tipExtension) * cos(endAngle) - tipExtension * sin(endAngle)).toFloat()
-                    val ctrlY = (centerOffset.y + (rMidEnd + tipExtension) * sin(endAngle) + tipExtension * cos(endAngle)).toFloat()
-                    path.quadraticTo(ctrlX, ctrlY, xInnerEnd, yInnerEnd)
-
-                    // Inner wavy contour (counter-clockwise back to start)
-                    for (i in sampleSteps downTo 0) {
-                        val fraction = i.toDouble() / sampleSteps.toDouble()
-                        val angle = startAngleRad + fraction * sweepAngleRad
-                        val waveOffset = waveAmplitudePx * sin(waveCount * angle)
-                        val rInner = baseRadius - (strokeWidthPx / 2f) - waveOffset
-                        val x = (centerOffset.x + rInner * cos(angle)).toFloat()
-                        val y = (centerOffset.y + rInner * sin(angle)).toFloat()
-                        path.lineTo(x, y)
+                    if (currentProgress >= 0.999f) {
+                        activePath.close()
                     }
 
-                    // Rounded start cap
-                    val startWaveOffset = waveAmplitudePx * sin(waveCount * startAngleRad)
-                    val rOuterStart = baseRadius + (strokeWidthPx / 2f) + startWaveOffset
-                    val xOuterStart = (centerOffset.x + rOuterStart * cos(startAngleRad)).toFloat()
-                    val yOuterStart = (centerOffset.y + rOuterStart * sin(startAngleRad)).toFloat()
-
-                    val tipStartExtension = strokeWidthPx * 0.35f
-                    val ctrlStartX = (centerOffset.x + baseRadius * cos(startAngleRad) + tipStartExtension * sin(startAngleRad)).toFloat()
-                    val ctrlStartY = (centerOffset.y + baseRadius * sin(startAngleRad) - tipStartExtension * cos(startAngleRad)).toFloat()
-                    path.quadraticTo(ctrlStartX, ctrlStartY, xOuterStart, yOuterStart)
-
-                    path.close()
-
-                    // Render active wavy ribbon
                     drawPath(
-                        path = path,
-                        color = activeColor
+                        path = activePath,
+                        color = activeColor,
+                        style = Stroke(
+                            width = strokeWidthPx,
+                            cap = StrokeCap.Round,
+                            join = StrokeJoin.Round
+                        )
                     )
                 }
             }
@@ -201,7 +229,7 @@ fun CircularWavyProgressHero(
                 verticalArrangement = Arrangement.Center,
                 modifier = Modifier.padding(horizontal = 24.dp)
             ) {
-                // Hero Money Value
+                // Hero Money Value (dominant central element)
                 Text(
                     text = heroAmountText,
                     style = MaterialTheme.typography.displayLarge.copy(
@@ -209,9 +237,9 @@ fun CircularWavyProgressHero(
                             heroAmountText.length > 15 -> 30.sp
                             heroAmountText.length > 11 -> 36.sp
                             heroAmountText.length > 8 -> 44.sp
-                            else -> 50.sp
+                            else -> 52.sp
                         },
-                        fontWeight = FontWeight.Bold,
+                        fontWeight = FontWeight.ExtraBold,
                         letterSpacing = (-1.0).sp
                     ),
                     color = activeColor,
