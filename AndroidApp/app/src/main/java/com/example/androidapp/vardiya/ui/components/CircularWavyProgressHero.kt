@@ -57,7 +57,9 @@ import kotlin.math.sin
  * upgrades, this component provides a dependency-free custom Canvas implementation:
  * - Mathematical sinusoidal wave running along the circular track circumference: r(θ) = R + A * sin(n * θ - φ)
  * - Determinate progress arc smoothly advancing clockwise from 12 o'clock (-90°).
- * - Full 360° wavy track visible in muted track color, establishing the expressive silhouette.
+ * - Non-overlapping track and active progress segments: track only renders where progress has not reached.
+ * - Physical 4.dp gap (CircularIndicatorTrackGapSize) separating active progress head and guide track.
+ * - Balanced 7.dp stroke width for both active and track, ensuring distinct wave lobes without occlusion.
  * - Dynamic, traveling wave animation (waveSpeed) running exclusively when shift is RUNNING.
  * - Zero CPU / idle battery consumption when PAUSED, FINISHED, or NOT_STARTED.
  * - Preserves all hero typography, labels, duration, percentage, and accessibility semantics.
@@ -142,8 +144,8 @@ fun CircularWavyProgressHero(
             contentAlignment = Alignment.Center
         ) {
             Canvas(modifier = Modifier.fillMaxSize()) {
-                val strokeWidthPx = 11.dp.toPx()
-                val trackStrokeWidthPx = 10.dp.toPx()
+                val strokeWidthPx = 7.dp.toPx()
+                val trackStrokeWidthPx = 7.dp.toPx()
                 val waveAmplitudePx = waveAmplitudeDp.toPx()
                 val centerOffset = Offset(size.width / 2f, size.height / 2f)
 
@@ -157,45 +159,69 @@ fun CircularWavyProgressHero(
                 val waveFrequency = 12
                 val phase = phaseAnimation
                 val startAngleRad = -PI / 2.0 // 12 o'clock
+                val fullCircleRad = 2.0 * PI
 
-                // 1. Draw the complete 360° circular wavy track
-                val trackSteps = 360
-                val trackPath = Path()
-                for (i in 0..trackSteps) {
-                    val fraction = i.toDouble() / trackSteps.toDouble()
-                    val angle = startAngleRad + fraction * 2.0 * PI
-                    val waveOffset = waveAmplitudePx * sin(waveFrequency * angle - phase)
-                    val r = baseRadius + waveOffset
-                    val x = (centerOffset.x + r * cos(angle)).toFloat()
-                    val y = (centerOffset.y + r * sin(angle)).toFloat()
-                    if (i == 0) {
-                        trackPath.moveTo(x, y)
-                    } else {
-                        trackPath.lineTo(x, y)
+                val currentProgress = animatedProgress.coerceIn(0f, 1f)
+                val progressSweepRad = currentProgress * fullCircleRad
+
+                // Gap handling inspired by official AndroidX CircularIndicatorTrackGapSize (4.dp)
+                // Angular spacing accounts for 4.dp physical air gap plus round stroke caps
+                val gapSizePx = 4.dp.toPx()
+                val fullGapAngleRad = (gapSizePx + strokeWidthPx) / baseRadius.toDouble()
+                val headGapAngleRad = fullGapAngleRad.coerceAtMost(progressSweepRad)
+                val tailGapAngleRad = fullGapAngleRad.coerceAtMost(progressSweepRad)
+
+                // 1. Draw the non-overlapping track segment (only where progress has not reached)
+                val trackStartAngleRad = startAngleRad + progressSweepRad + headGapAngleRad
+                val trackEndAngleRad = startAngleRad + fullCircleRad - tailGapAngleRad
+                val trackSweepRad = trackEndAngleRad - trackStartAngleRad
+
+                if (currentProgress < 0.995f && trackSweepRad > 0.02) {
+                    val isFullTrack = currentProgress < 0.005f
+                    val trackSteps = if (isFullTrack) 360 else max(8, ((trackSweepRad / fullCircleRad) * 360.0).roundToInt())
+                    val trackPath = Path()
+
+                    for (i in 0..trackSteps) {
+                        val fraction = i.toDouble() / trackSteps.toDouble()
+                        val angle = if (isFullTrack) {
+                            startAngleRad + fraction * fullCircleRad
+                        } else {
+                            trackStartAngleRad + fraction * trackSweepRad
+                        }
+                        val waveOffset = waveAmplitudePx * sin(waveFrequency * angle - phase)
+                        val r = baseRadius + waveOffset
+                        val x = (centerOffset.x + r * cos(angle)).toFloat()
+                        val y = (centerOffset.y + r * sin(angle)).toFloat()
+                        if (i == 0) {
+                            trackPath.moveTo(x, y)
+                        } else {
+                            trackPath.lineTo(x, y)
+                        }
                     }
-                }
-                trackPath.close()
 
-                drawPath(
-                    path = trackPath,
-                    color = trackColor,
-                    style = Stroke(
-                        width = trackStrokeWidthPx,
-                        cap = StrokeCap.Round,
-                        join = StrokeJoin.Round
+                    if (isFullTrack) {
+                        trackPath.close()
+                    }
+
+                    drawPath(
+                        path = trackPath,
+                        color = trackColor,
+                        style = Stroke(
+                            width = trackStrokeWidthPx,
+                            cap = StrokeCap.Round,
+                            join = StrokeJoin.Round
+                        )
                     )
-                )
+                }
 
                 // 2. Draw the active determinate wavy progress arc
-                val currentProgress = animatedProgress
                 if (currentProgress > 0.005f) {
-                    val sweepAngleRad = (currentProgress * 2.0 * PI).coerceIn(0.0, 2.0 * PI)
                     val activeSteps = max(8, (currentProgress * 360.0).roundToInt())
                     val activePath = Path()
 
                     for (i in 0..activeSteps) {
                         val fraction = i.toDouble() / activeSteps.toDouble()
-                        val angle = startAngleRad + fraction * sweepAngleRad
+                        val angle = startAngleRad + fraction * progressSweepRad
                         val waveOffset = waveAmplitudePx * sin(waveFrequency * angle - phase)
                         val r = baseRadius + waveOffset
                         val x = (centerOffset.x + r * cos(angle)).toFloat()
