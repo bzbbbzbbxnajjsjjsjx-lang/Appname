@@ -54,15 +54,20 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.ui.graphics.Color
 import com.example.androidapp.vardiya.data.repository.LocalVardiyaRepository
 import com.example.androidapp.vardiya.domain.model.ShiftState
+import com.example.androidapp.vardiya.domain.model.ShiftTemplate
 import com.example.androidapp.vardiya.ui.components.BreakManagementSheet
 import com.example.androidapp.vardiya.ui.components.CircularWavyProgressHero
 import com.example.androidapp.vardiya.ui.components.ShiftTemplatePicker
 import com.example.androidapp.vardiya.ui.components.VardiyaControlBar
 import com.example.androidapp.vardiya.ui.components.VardiyaHistoryDialog
 import com.example.androidapp.vardiya.ui.components.VardiyaSetupDialog
+import com.example.androidapp.vardiya.ui.navigation.WindowWidthSizeClass
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -139,175 +144,273 @@ fun VardiyaScreen(
         },
         containerColor = MaterialTheme.colorScheme.surface
     ) { innerPadding ->
-        Column(
+        BoxWithConstraints(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .padding(horizontal = 24.dp, vertical = 16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.SpaceBetween
         ) {
-            // Top: State Badge (clickable for break management)
-            StateBadge(
-                shiftState = uiState.shiftState,
-                badgeText = uiState.stateBadgeText,
-                isBreakActive = uiState.isBreakActive,
-                onClick = if (uiState.isBreakActive || uiState.shiftState == ShiftState.RUNNING) {
-                    {
-                        view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                        viewModel.openBreakSheet()
-                    }
-                } else null
-            )
+            val sizeClass = WindowWidthSizeClass.fromWidth(maxWidth)
 
-            // Template Badge / Quick Picker
-            if (uiState.selectedTemplate != null) {
-                Surface(
-                    onClick = {
-                        view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                        viewModel.openTemplatePicker()
-                    },
-                    shape = RoundedCornerShape(percent = 50),
-                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+            if (sizeClass.isCompact) {
+                // Compact Screen (Phones): Vertical single-column layout
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 24.dp, vertical = 16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(8.dp)
-                                .clip(CircleShape)
-                                .background(Color(uiState.selectedTemplate!!.colorTag))
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = uiState.selectedTemplate!!.name,
-                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                    }
-                }
-            } else if (uiState.shiftState == ShiftState.NOT_STARTED) {
-                Surface(
-                    onClick = {
-                        view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                        viewModel.openTemplatePicker()
-                    },
-                    shape = RoundedCornerShape(percent = 50),
-                    color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.6f)
-                ) {
-                    Text(
-                        text = "+ Şablon Seç",
-                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                    // Top: State Badge (clickable for break management)
+                    StateBadge(
+                        shiftState = uiState.shiftState,
+                        badgeText = uiState.stateBadgeText,
+                        isBreakActive = uiState.isBreakActive,
+                        onClick = if (uiState.isBreakActive || uiState.shiftState == ShiftState.RUNNING) {
+                            {
+                                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                                viewModel.openBreakSheet()
+                            }
+                        } else null
                     )
-                }
-            }
 
-            // Middle: Visual Hero with Circular Wavy Progress Indicator
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-            ) {
-                // Organic Wavy Circular Progress Hero
-                CircularWavyProgressHero(
-                    progress = uiState.progress,
-                    shiftState = uiState.shiftState,
-                    heroAmountText = uiState.heroAmountText,
-                    heroSubtitleText = uiState.heroSubtitleText,
-                    durationText = if (uiState.shiftState != ShiftState.NOT_STARTED) {
-                        uiState.earnings.formattedDuration
-                    } else null,
-                    isOvertimeActive = uiState.isOvertimeActive,
-                    isBreakActive = uiState.isBreakActive,
-                    breakDurationText = if (uiState.isBreakActive) uiState.activeBreakFormattedDuration else null,
-                    isNightShiftActive = uiState.isNightShiftActive,
-                    modifier = Modifier.padding(vertical = 4.dp)
-                )
+                    // Template Badge / Quick Picker
+                    TemplateSelectorChip(
+                        selectedTemplate = uiState.selectedTemplate,
+                        shiftState = uiState.shiftState,
+                        onClick = {
+                            view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                            viewModel.openTemplatePicker()
+                        }
+                    )
 
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // Rates breakdown card
-                Card(
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
-                    ),
-                    shape = RoundedCornerShape(20.dp),
-                    modifier = Modifier.fillMaxWidth(0.92f)
-                ) {
+                    // Middle: Visual Hero with Circular Wavy Progress Indicator
                     Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(vertical = 12.dp, horizontal = 20.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                            .weight(1f)
                     ) {
-                        Text(
-                            text = uiState.earnings.formattedHourlyRate,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSurface
+                        CircularWavyProgressHero(
+                            progress = uiState.progress,
+                            shiftState = uiState.shiftState,
+                            heroAmountText = uiState.heroAmountText,
+                            heroSubtitleText = uiState.heroSubtitleText,
+                            durationText = if (uiState.shiftState != ShiftState.NOT_STARTED) {
+                                uiState.earnings.formattedDuration
+                            } else null,
+                            isOvertimeActive = uiState.isOvertimeActive,
+                            isBreakActive = uiState.isBreakActive,
+                            breakDurationText = if (uiState.isBreakActive) uiState.activeBreakFormattedDuration else null,
+                            isNightShiftActive = uiState.isNightShiftActive,
+                            modifier = Modifier.padding(vertical = 4.dp)
                         )
 
-                        Text(
-                            text = uiState.earnings.formattedMinuteRate,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        Spacer(modifier = Modifier.height(16.dp))
 
-                        Text(
-                            text = uiState.earnings.formattedSecondRate,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
-                        )
+                        RatesBreakdownCard(uiState = uiState)
+                    }
 
-                        if (uiState.isOvertimeActive || uiState.earnings.overtimeDurationMs > 0L) {
-                            Text(
-                                text = "Mesai: ${uiState.earnings.formattedOvertimeEarned}",
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary
-                            )
+                    // Bottom: Material 3 Expressive Floating Control Bar
+                    VardiyaControlBar(
+                        shiftState = uiState.shiftState,
+                        isBreakActive = uiState.isBreakActive,
+                        onStart = {
+                            view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                            viewModel.startShift()
+                        },
+                        onPause = {
+                            view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                            viewModel.pauseShift()
+                        },
+                        onResume = {
+                            view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                            viewModel.resumeShift()
+                        },
+                        onToggleBreak = {
+                            view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                            viewModel.toggleBreak()
+                        },
+                        onFinish = {
+                            view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                            viewModel.finishShift()
+                        },
+                        onReset = {
+                            view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                            viewModel.resetShift()
                         }
+                    )
+                }
+            } else {
+                // Medium / Expanded (Foldable / Tablet / Large Screen): Responsive 2-column layout
+                Row(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 32.dp, vertical = 20.dp),
+                    horizontalArrangement = Arrangement.spacedBy(28.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Left Column: Visual hero + rates card
+                    Column(
+                        modifier = Modifier
+                            .weight(0.48f)
+                            .fillMaxHeight(),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        StateBadge(
+                            shiftState = uiState.shiftState,
+                            badgeText = uiState.stateBadgeText,
+                            isBreakActive = uiState.isBreakActive,
+                            onClick = if (uiState.isBreakActive || uiState.shiftState == ShiftState.RUNNING) {
+                                {
+                                    view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                                    viewModel.openBreakSheet()
+                                }
+                            } else null
+                        )
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        TemplateSelectorChip(
+                            selectedTemplate = uiState.selectedTemplate,
+                            shiftState = uiState.shiftState,
+                            onClick = {
+                                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                                viewModel.openTemplatePicker()
+                            }
+                        )
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        CircularWavyProgressHero(
+                            progress = uiState.progress,
+                            shiftState = uiState.shiftState,
+                            heroAmountText = uiState.heroAmountText,
+                            heroSubtitleText = uiState.heroSubtitleText,
+                            durationText = if (uiState.shiftState != ShiftState.NOT_STARTED) {
+                                uiState.earnings.formattedDuration
+                            } else null,
+                            isOvertimeActive = uiState.isOvertimeActive,
+                            isBreakActive = uiState.isBreakActive,
+                            breakDurationText = if (uiState.isBreakActive) uiState.activeBreakFormattedDuration else null,
+                            isNightShiftActive = uiState.isNightShiftActive,
+                            modifier = Modifier.padding(vertical = 4.dp)
+                        )
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        RatesBreakdownCard(uiState = uiState)
+                    }
+
+                    // Right Column: Shift Status Overview & Control Center
+                    Column(
+                        modifier = Modifier
+                            .weight(0.52f)
+                            .fillMaxHeight(),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Card(
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+                            ),
+                            shape = RoundedCornerShape(24.dp),
+                            modifier = Modifier.fillMaxWidth(0.92f)
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(24.dp),
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Text(
+                                    text = "Vardiya Kontrol Merkezi",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text("Vardiya Durumu:", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text(uiState.stateBadgeText, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                                }
+                                if (uiState.shiftState != ShiftState.NOT_STARTED) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text("Aktif Süre:", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        Text(uiState.earnings.formattedDuration, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                                    }
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text("Kazanılan Tutar:", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        Text(uiState.heroAmountText, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                                    }
+                                }
+                                if (uiState.isBreakActive) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text("Mola Süresi:", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.tertiary)
+                                        Text(uiState.activeBreakFormattedDuration, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.tertiary)
+                                    }
+                                }
+                                if (uiState.isOvertimeActive) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text("Fazla Mesai:", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
+                                        Text(uiState.earnings.formattedOvertimeEarned, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                                    }
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(28.dp))
+
+                        VardiyaControlBar(
+                            shiftState = uiState.shiftState,
+                            isBreakActive = uiState.isBreakActive,
+                            onStart = {
+                                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                                viewModel.startShift()
+                            },
+                            onPause = {
+                                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                                viewModel.pauseShift()
+                            },
+                            onResume = {
+                                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                                viewModel.resumeShift()
+                            },
+                            onToggleBreak = {
+                                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                                viewModel.toggleBreak()
+                            },
+                            onFinish = {
+                                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                                viewModel.finishShift()
+                            },
+                            onReset = {
+                                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                                viewModel.resetShift()
+                            }
+                        )
                     }
                 }
             }
-
-            // Bottom: Material 3 Expressive Floating Control Bar
-            VardiyaControlBar(
-                shiftState = uiState.shiftState,
-                isBreakActive = uiState.isBreakActive,
-                onStart = {
-                    view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                    viewModel.startShift()
-                },
-                onPause = {
-                    view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                    viewModel.pauseShift()
-                },
-                onResume = {
-                    view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                    viewModel.resumeShift()
-                },
-                onToggleBreak = {
-                    view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                    viewModel.toggleBreak()
-                },
-                onFinish = {
-                    view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                    viewModel.finishShift()
-                },
-                onReset = {
-                    view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                    viewModel.resetShift()
-                }
-            )
         }
     }
 
@@ -435,6 +538,106 @@ private fun StateBadge(
                     else -> MaterialTheme.colorScheme.onSurfaceVariant
                 }
             )
+        }
+    }
+}
+
+@Composable
+private fun TemplateSelectorChip(
+    selectedTemplate: ShiftTemplate?,
+    shiftState: ShiftState,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    if (selectedTemplate != null) {
+        Surface(
+            onClick = onClick,
+            shape = RoundedCornerShape(percent = 50),
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+            modifier = modifier
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(8.dp)
+                        .clip(CircleShape)
+                        .background(Color(selectedTemplate.colorTag))
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = selectedTemplate.name,
+                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+        }
+    } else if (shiftState == ShiftState.NOT_STARTED) {
+        Surface(
+            onClick = onClick,
+            shape = RoundedCornerShape(percent = 50),
+            color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.6f),
+            modifier = modifier
+        ) {
+            Text(
+                text = "+ Şablon Seç",
+                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun RatesBreakdownCard(
+    uiState: VardiyaUiState,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+        ),
+        shape = RoundedCornerShape(20.dp),
+        modifier = modifier.fillMaxWidth(0.92f)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 12.dp, horizontal = 20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Text(
+                text = uiState.earnings.formattedHourlyRate,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+
+            Text(
+                text = uiState.earnings.formattedMinuteRate,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            Text(
+                text = uiState.earnings.formattedSecondRate,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+            )
+
+            if (uiState.isOvertimeActive || uiState.earnings.overtimeDurationMs > 0L) {
+                Text(
+                    text = "Mesai: ${uiState.earnings.formattedOvertimeEarned}",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
         }
     }
 }

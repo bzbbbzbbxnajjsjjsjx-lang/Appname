@@ -5,10 +5,12 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -58,11 +60,17 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.androidapp.theme.VardiyaIcons
 import com.example.androidapp.vardiya.domain.model.CalendarDate
 import com.example.androidapp.vardiya.domain.model.CompletedShiftRecord
+import com.example.androidapp.vardiya.domain.model.DayShiftSummary
 import com.example.androidapp.vardiya.domain.model.ShiftHistoryFilterEngine
 import com.example.androidapp.vardiya.domain.model.ShiftHistoryFilterType
+import com.example.androidapp.vardiya.domain.model.ShiftHistorySummary
 import com.example.androidapp.vardiya.ui.VardiyaViewModel
+import com.example.androidapp.vardiya.ui.adaptive.VardiyaTwoPaneLayout
 import com.example.androidapp.vardiya.ui.components.CalendarHeatmap
+import com.example.androidapp.vardiya.ui.components.ShiftDetailContent
+import com.example.androidapp.vardiya.ui.components.ShiftDetailEmptyState
 import com.example.androidapp.vardiya.ui.components.ShiftDetailSheet
+import com.example.androidapp.vardiya.ui.navigation.WindowWidthSizeClass
 import java.math.BigDecimal
 import java.text.DecimalFormat
 import java.text.DecimalFormatSymbols
@@ -184,12 +192,13 @@ fun VardiyaHistoryScreen(
         },
         containerColor = MaterialTheme.colorScheme.surface
     ) { innerPadding ->
-        Column(
+        BoxWithConstraints(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .padding(horizontal = 20.dp)
         ) {
+            val sizeClass = WindowWidthSizeClass.fromWidth(maxWidth)
+
             if (uiState.history.isEmpty()) {
                 // Empty State Illustration & Message
                 Column(
@@ -221,88 +230,76 @@ fun VardiyaHistoryScreen(
                         textAlign = TextAlign.Center
                     )
                 }
-            } else {
-                // Search Bar
-                OutlinedTextField(
-                    value = searchQuery,
-                    onValueChange = { searchQuery = it },
-                    placeholder = { Text("Vardiya veya not ara...") },
-                    leadingIcon = {
-                        Icon(
-                            imageVector = VardiyaIcons.Search,
-                            contentDescription = "Ara",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    },
-                    trailingIcon = {
-                        if (searchQuery.isNotEmpty()) {
-                            IconButton(onClick = { searchQuery = "" }) {
-                                Icon(
-                                    imageVector = VardiyaIcons.Close,
-                                    contentDescription = "Aramayı temizle",
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
+            } else if (sizeClass.isCompact) {
+                // Compact Layout: Single-column list with ModalBottomSheet detail
+                HistoryListContent(
+                    searchQuery = searchQuery,
+                    onSearchQueryChange = { searchQuery = it },
+                    filterType = filterType,
+                    onFilterTypeChange = { filterType = it },
+                    selectedCalendarDate = selectedCalendarDate,
+                    onSelectCalendarDate = { selectedCalendarDate = it },
+                    isHeatmapVisible = isHeatmapVisible,
+                    calYear = calYear,
+                    calMonth = calMonth,
+                    monthHeatmapData = monthHeatmapData,
+                    onPreviousMonth = {
+                        if (calMonth == 1) {
+                            calMonth = 12
+                            calYear -= 1
+                        } else {
+                            calMonth -= 1
                         }
                     },
-                    singleLine = true,
-                    shape = RoundedCornerShape(16.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = MaterialTheme.colorScheme.primary,
-                        unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
-                    ),
+                    onNextMonth = {
+                        if (calMonth == 12) {
+                            calMonth = 1
+                            calYear += 1
+                        } else {
+                            calMonth += 1
+                        }
+                    },
+                    summary = summary,
+                    filteredShifts = filteredShifts,
+                    selectedRecordId = uiState.selectedHistoryRecord?.id,
+                    onSelectRecord = { viewModel.selectHistoryRecord(it) },
+                    onClearFilters = {
+                        searchQuery = ""
+                        filterType = ShiftHistoryFilterType.ALL
+                        selectedCalendarDate = null
+                    },
+                    rateFormat = rateFormat,
+                    currencySymbol = uiState.history.firstOrNull()?.currencySymbol ?: "₺",
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 4.dp, bottom = 8.dp)
+                        .fillMaxSize()
+                        .padding(horizontal = 20.dp)
                 )
 
-                // Filter Chips Row
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState())
-                        .padding(bottom = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    ShiftHistoryFilterType.values().forEach { type ->
-                        FilterChip(
-                            selected = filterType == type,
-                            onClick = { filterType = type },
-                            label = { Text(type.label) },
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                                selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
-                            )
-                        )
-                    }
-
-                    // Selected Calendar Date Chip (if active)
-                    if (selectedCalendarDate != null) {
-                        FilterChip(
-                            selected = true,
-                            onClick = { selectedCalendarDate = null },
-                            label = { Text("${selectedCalendarDate?.dayOfMonth}/${selectedCalendarDate?.month} ✕") },
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = MaterialTheme.colorScheme.tertiaryContainer,
-                                selectedLabelColor = MaterialTheme.colorScheme.onTertiaryContainer
-                            )
-                        )
-                    }
+                // ModalBottomSheet only on compact screens
+                uiState.selectedHistoryRecord?.let { selectedRecord ->
+                    ShiftDetailSheet(
+                        record = selectedRecord,
+                        onDismiss = { viewModel.selectHistoryRecord(null) }
+                    )
                 }
-
-                // Expandable Calendar Heatmap
-                AnimatedVisibility(
-                    visible = isHeatmapVisible,
-                    enter = fadeIn() + expandVertically(),
-                    exit = fadeOut() + shrinkVertically()
-                ) {
-                    Column(modifier = Modifier.padding(bottom = 12.dp)) {
-                        CalendarHeatmap(
-                            displayedYear = calYear,
-                            displayedMonth = calMonth,
-                            monthData = monthHeatmapData,
-                            selectedDate = selectedCalendarDate,
-                            onSelectDate = { date -> selectedCalendarDate = date },
+            } else {
+                // Medium / Expanded: Responsive Two-Pane Layout
+                VardiyaTwoPaneLayout(
+                    sizeClass = sizeClass,
+                    listPaneWeight = 0.44f,
+                    detailPaneWeight = 0.56f,
+                    listPane = {
+                        HistoryListContent(
+                            searchQuery = searchQuery,
+                            onSearchQueryChange = { searchQuery = it },
+                            filterType = filterType,
+                            onFilterTypeChange = { filterType = it },
+                            selectedCalendarDate = selectedCalendarDate,
+                            onSelectCalendarDate = { selectedCalendarDate = it },
+                            isHeatmapVisible = isHeatmapVisible,
+                            calYear = calYear,
+                            calMonth = calMonth,
+                            monthHeatmapData = monthHeatmapData,
                             onPreviousMonth = {
                                 if (calMonth == 1) {
                                     calMonth = 12
@@ -318,125 +315,48 @@ fun VardiyaHistoryScreen(
                                 } else {
                                     calMonth += 1
                                 }
-                            }
-                        )
-                    }
-                }
-
-                // Summary Statistics Bar
-                Card(
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
-                    ),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 12.dp)
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 10.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column {
-                            Text(
-                                text = "FİLTRELENEN KAZANÇ",
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            val currency = uiState.history.firstOrNull()?.currencySymbol ?: "₺"
-                            Text(
-                                text = "$currency${rateFormat.format(summary.totalEarned)}",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        }
-
-                        Column(horizontalAlignment = Alignment.End) {
-                            Text(
-                                text = "${summary.totalCount} vardiya",
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            Text(
-                                text = summary.formattedTotalDuration,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                }
-
-                // Shifts List / Empty Filtered State
-                if (filteredShifts.isEmpty()) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f)
-                            .padding(24.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        Text(
-                            text = "Filtrelere Uygun Vardiya Bulunamadı",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = "Arama kriterlerinizi veya filtrelerinizi değiştirerek tekrar deneyebilirsiniz.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            textAlign = TextAlign.Center
-                        )
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Button(
-                            onClick = {
+                            },
+                            summary = summary,
+                            filteredShifts = filteredShifts,
+                            selectedRecordId = uiState.selectedHistoryRecord?.id,
+                            onSelectRecord = { viewModel.selectHistoryRecord(it) },
+                            onClearFilters = {
                                 searchQuery = ""
                                 filterType = ShiftHistoryFilterType.ALL
                                 selectedCalendarDate = null
                             },
-                            shape = RoundedCornerShape(12.dp)
+                            rateFormat = rateFormat,
+                            currencySymbol = uiState.history.firstOrNull()?.currencySymbol ?: "₺",
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(start = 20.dp, end = 12.dp)
+                        )
+                    },
+                    detailPane = {
+                        Card(
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+                            ),
+                            shape = RoundedCornerShape(20.dp),
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(start = 12.dp, end = 20.dp, top = 4.dp, bottom = 16.dp)
                         ) {
-                            Text("Filtreleri Temizle")
+                            val selectedRecord = uiState.selectedHistoryRecord
+                            if (selectedRecord != null) {
+                                ShiftDetailContent(
+                                    record = selectedRecord,
+                                    onClose = { viewModel.selectHistoryRecord(null) },
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            } else {
+                                ShiftDetailEmptyState(modifier = Modifier.fillMaxSize())
+                            }
                         }
                     }
-                } else {
-                    LazyColumn(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        items(filteredShifts, key = { it.id }) { item ->
-                            ShiftListItemCard(
-                                item = item,
-                                onClick = {
-                                    viewModel.selectHistoryRecord(item)
-                                }
-                            )
-                        }
-                        item {
-                            Spacer(modifier = Modifier.height(16.dp))
-                        }
-                    }
-                }
+                )
             }
         }
-    }
-
-    // Rich Shift Detail Sheet (ModalBottomSheet)
-    uiState.selectedHistoryRecord?.let { selectedRecord ->
-        ShiftDetailSheet(
-            record = selectedRecord,
-            onDismiss = { viewModel.selectHistoryRecord(null) }
-        )
     }
 
     // Clear History Confirmation Dialog
@@ -465,14 +385,234 @@ fun VardiyaHistoryScreen(
 }
 
 @Composable
+private fun HistoryListContent(
+    searchQuery: String,
+    onSearchQueryChange: (String) -> Unit,
+    filterType: ShiftHistoryFilterType,
+    onFilterTypeChange: (ShiftHistoryFilterType) -> Unit,
+    selectedCalendarDate: CalendarDate?,
+    onSelectCalendarDate: (CalendarDate?) -> Unit,
+    isHeatmapVisible: Boolean,
+    calYear: Int,
+    calMonth: Int,
+    monthHeatmapData: Map<Int, DayShiftSummary>,
+    onPreviousMonth: () -> Unit,
+    onNextMonth: () -> Unit,
+    summary: ShiftHistorySummary,
+    filteredShifts: List<CompletedShiftRecord>,
+    selectedRecordId: String?,
+    onSelectRecord: (CompletedShiftRecord) -> Unit,
+    onClearFilters: () -> Unit,
+    rateFormat: DecimalFormat,
+    currencySymbol: String,
+    modifier: Modifier = Modifier
+) {
+    Column(modifier = modifier) {
+        // Search Bar
+        OutlinedTextField(
+            value = searchQuery,
+            onValueChange = onSearchQueryChange,
+            placeholder = { Text("Vardiya veya not ara...") },
+            leadingIcon = {
+                Icon(
+                    imageVector = VardiyaIcons.Search,
+                    contentDescription = "Ara",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            },
+            trailingIcon = {
+                if (searchQuery.isNotEmpty()) {
+                    IconButton(onClick = { onSearchQueryChange("") }) {
+                        Icon(
+                            imageVector = VardiyaIcons.Close,
+                            contentDescription = "Aramayı temizle",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            },
+            singleLine = true,
+            shape = RoundedCornerShape(16.dp),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = MaterialTheme.colorScheme.primary,
+                unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
+            ),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 4.dp, bottom = 8.dp)
+        )
+
+        // Filter Chips Row
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
+                .padding(bottom = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            ShiftHistoryFilterType.values().forEach { type ->
+                FilterChip(
+                    selected = filterType == type,
+                    onClick = { onFilterTypeChange(type) },
+                    label = { Text(type.label) },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                        selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                )
+            }
+
+            // Selected Calendar Date Chip (if active)
+            if (selectedCalendarDate != null) {
+                FilterChip(
+                    selected = true,
+                    onClick = { onSelectCalendarDate(null) },
+                    label = { Text("${selectedCalendarDate.dayOfMonth}/${selectedCalendarDate.month} ✕") },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                        selectedLabelColor = MaterialTheme.colorScheme.onTertiaryContainer
+                    )
+                )
+            }
+        }
+
+        // Expandable Calendar Heatmap
+        AnimatedVisibility(
+            visible = isHeatmapVisible,
+            enter = fadeIn() + expandVertically(),
+            exit = fadeOut() + shrinkVertically()
+        ) {
+            Column(modifier = Modifier.padding(bottom = 12.dp)) {
+                CalendarHeatmap(
+                    displayedYear = calYear,
+                    displayedMonth = calMonth,
+                    monthData = monthHeatmapData,
+                    selectedDate = selectedCalendarDate,
+                    onSelectDate = onSelectCalendarDate,
+                    onPreviousMonth = onPreviousMonth,
+                    onNextMonth = onNextMonth
+                )
+            }
+        }
+
+        // Summary Statistics Bar
+        Card(
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+            ),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 12.dp)
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text(
+                        text = "FİLTRELENEN KAZANÇ",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = "$currencySymbol${rateFormat.format(summary.totalEarned)}",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+
+                Column(horizontalAlignment = Alignment.End) {
+                    Text(
+                        text = "${summary.totalCount} vardiya",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = summary.formattedTotalDuration,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+
+        // Shifts List / Empty Filtered State
+        if (filteredShifts.isEmpty()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Text(
+                    text = "Filtrelere Uygun Vardiya Bulunamadı",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "Arama kriterlerinizi veya filtrelerinizi değiştirerek tekrar deneyebilirsiniz.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                Button(
+                    onClick = onClearFilters,
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text("Filtreleri Temizle")
+                }
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                items(filteredShifts, key = { it.id }) { item ->
+                    ShiftListItemCard(
+                        item = item,
+                        isSelected = item.id == selectedRecordId,
+                        onClick = { onSelectRecord(item) }
+                    )
+                }
+                item {
+                    Spacer(modifier = Modifier.height(16.dp))
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun ShiftListItemCard(
     item: CompletedShiftRecord,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    isSelected: Boolean = false
 ) {
     Card(
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+            containerColor = if (isSelected) {
+                MaterialTheme.colorScheme.surfaceContainerHighest
+            } else {
+                MaterialTheme.colorScheme.surfaceContainerHigh
+            }
         ),
+        border = if (isSelected) {
+            BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary)
+        } else null,
         shape = RoundedCornerShape(16.dp),
         modifier = Modifier
             .fillMaxWidth()

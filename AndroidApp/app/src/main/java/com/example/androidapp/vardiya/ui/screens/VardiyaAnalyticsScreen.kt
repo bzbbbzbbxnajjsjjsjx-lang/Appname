@@ -7,14 +7,17 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -46,10 +49,15 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.androidapp.theme.VardiyaIcons
 import com.example.androidapp.vardiya.domain.analytics.AnalyticsPeriod
+import com.example.androidapp.vardiya.domain.analytics.MonthlyAnalyticsData
+import com.example.androidapp.vardiya.domain.analytics.OverallAnalyticsSummary
+import com.example.androidapp.vardiya.domain.analytics.WeeklyAnalyticsData
+import com.example.androidapp.vardiya.ui.VardiyaUiState
 import com.example.androidapp.vardiya.ui.VardiyaViewModel
 import com.example.androidapp.vardiya.ui.components.EarningsCompositionCard
 import com.example.androidapp.vardiya.ui.components.MonthlyTrendChart
 import com.example.androidapp.vardiya.ui.components.WeeklyBarChart
+import com.example.androidapp.vardiya.ui.navigation.WindowWidthSizeClass
 import java.math.BigDecimal
 import java.text.DecimalFormat
 import java.text.DecimalFormatSymbols
@@ -127,14 +135,13 @@ fun VardiyaAnalyticsScreen(
         },
         containerColor = MaterialTheme.colorScheme.surface
     ) { innerPadding ->
-        Column(
+        BoxWithConstraints(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .padding(horizontal = 20.dp, vertical = 8.dp)
-                .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            val sizeClass = WindowWidthSizeClass.fromWidth(maxWidth)
+
             if (uiState.history.isEmpty()) {
                 // Empty State Illustration & Message
                 Column(
@@ -166,181 +173,291 @@ fun VardiyaAnalyticsScreen(
                         textAlign = TextAlign.Center
                     )
                 }
+            } else if (sizeClass.isCompact) {
+                // Compact Layout: Single vertical scrollable column
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 20.dp, vertical = 8.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    AnalyticsChartSection(
+                        uiState = uiState,
+                        weeklyData = weeklyData,
+                        monthlyData = monthlyData,
+                        currencySymbol = currencySymbol,
+                        viewModel = viewModel
+                    )
+
+                    AnalyticsPeriodSummarySection(
+                        uiState = uiState,
+                        weeklyData = weeklyData,
+                        monthlyData = monthlyData,
+                        currencySymbol = currencySymbol,
+                        currencyFormat = currencyFormat
+                    )
+
+                    AnalyticsAllTimeSection(
+                        overallData = overallData,
+                        currencySymbol = currencySymbol,
+                        currencyFormat = currencyFormat
+                    )
+
+                    Spacer(modifier = Modifier.height(16.dp))
+                }
             } else {
-                // Period Selector Tabs & Navigation Bar
-                PeriodSelectorAndNavigator(
-                    currentPeriod = uiState.analyticsPeriod,
-                    periodTitle = if (uiState.analyticsPeriod == AnalyticsPeriod.WEEKLY) {
-                        weeklyData.weekRangeFormatted
-                    } else {
-                        monthlyData.monthName
-                    },
-                    onSelectPeriod = { viewModel.setAnalyticsPeriod(it) },
-                    onPrevious = { viewModel.navigateAnalyticsPrevious() },
-                    onNext = { viewModel.navigateAnalyticsNext() }
+                // Medium / Expanded: 2-Column Responsive Dashboard
+                Row(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 24.dp, vertical = 12.dp)
+                ) {
+                    // Left Column: Period Selection & Charts
+                    Column(
+                        modifier = Modifier
+                            .weight(0.5f)
+                            .fillMaxHeight()
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        AnalyticsChartSection(
+                            uiState = uiState,
+                            weeklyData = weeklyData,
+                            monthlyData = monthlyData,
+                            currencySymbol = currencySymbol,
+                            viewModel = viewModel
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                    }
+
+                    Spacer(modifier = Modifier.width(20.dp))
+
+                    // Right Column: Summary KPIs, Break deductions & All-Time Stats
+                    Column(
+                        modifier = Modifier
+                            .weight(0.5f)
+                            .fillMaxHeight()
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        AnalyticsPeriodSummarySection(
+                            uiState = uiState,
+                            weeklyData = weeklyData,
+                            monthlyData = monthlyData,
+                            currencySymbol = currencySymbol,
+                            currencyFormat = currencyFormat
+                        )
+
+                        AnalyticsAllTimeSection(
+                            overallData = overallData,
+                            currencySymbol = currencySymbol,
+                            currencyFormat = currencyFormat
+                        )
+
+                        Spacer(modifier = Modifier.height(16.dp))
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AnalyticsChartSection(
+    uiState: VardiyaUiState,
+    weeklyData: WeeklyAnalyticsData,
+    monthlyData: MonthlyAnalyticsData,
+    currencySymbol: String,
+    viewModel: VardiyaViewModel
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        // Period Selector Tabs & Navigation Bar
+        PeriodSelectorAndNavigator(
+            currentPeriod = uiState.analyticsPeriod,
+            periodTitle = if (uiState.analyticsPeriod == AnalyticsPeriod.WEEKLY) {
+                weeklyData.weekRangeFormatted
+            } else {
+                monthlyData.monthName
+            },
+            onSelectPeriod = { viewModel.setAnalyticsPeriod(it) },
+            onPrevious = { viewModel.navigateAnalyticsPrevious() },
+            onNext = { viewModel.navigateAnalyticsNext() }
+        )
+
+        // Animated Chart View
+        AnimatedContent(
+            targetState = uiState.analyticsPeriod,
+            transitionSpec = { fadeIn() togetherWith fadeOut() },
+            label = "analyticsChartTransition"
+        ) { targetPeriod ->
+            if (targetPeriod == AnalyticsPeriod.WEEKLY) {
+                WeeklyBarChart(
+                    dailyPoints = weeklyData.dailyPoints,
+                    currencySymbol = currencySymbol
+                )
+            } else {
+                MonthlyTrendChart(
+                    weeklyBuckets = monthlyData.weeklyBuckets,
+                    currencySymbol = currencySymbol
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun AnalyticsPeriodSummarySection(
+    uiState: VardiyaUiState,
+    weeklyData: WeeklyAnalyticsData,
+    monthlyData: MonthlyAnalyticsData,
+    currencySymbol: String,
+    currencyFormat: DecimalFormat
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        if (uiState.analyticsPeriod == AnalyticsPeriod.WEEKLY) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                AnalyticsKpiCard(
+                    title = "Haftalık Kazanç",
+                    value = "$currencySymbol${currencyFormat.format(weeklyData.totalEarned)}",
+                    subtitle = "${weeklyData.totalShifts} vardiya",
+                    modifier = Modifier.weight(1f),
+                    highlightColor = MaterialTheme.colorScheme.primary
                 )
 
-                // Animated Chart View
-                AnimatedContent(
-                    targetState = uiState.analyticsPeriod,
-                    transitionSpec = { fadeIn() togetherWith fadeOut() },
-                    label = "analyticsChartTransition"
-                ) { targetPeriod ->
-                    if (targetPeriod == AnalyticsPeriod.WEEKLY) {
-                        WeeklyBarChart(
-                            dailyPoints = weeklyData.dailyPoints,
-                            currencySymbol = currencySymbol
-                        )
-                    } else {
-                        MonthlyTrendChart(
-                            weeklyBuckets = monthlyData.weeklyBuckets,
-                            currencySymbol = currencySymbol
-                        )
-                    }
-                }
+                AnalyticsKpiCard(
+                    title = "Çalışma Süresi",
+                    value = weeklyData.formattedTotalDuration,
+                    subtitle = "Ort. $currencySymbol${currencyFormat.format(weeklyData.averageHourlyRate)}/saat",
+                    modifier = Modifier.weight(1f)
+                )
+            }
 
-                // Period Summary Cards
-                if (uiState.analyticsPeriod == AnalyticsPeriod.WEEKLY) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        AnalyticsKpiCard(
-                            title = "Haftalık Kazanç",
-                            value = "$currencySymbol${currencyFormat.format(weeklyData.totalEarned)}",
-                            subtitle = "${weeklyData.totalShifts} vardiya",
-                            modifier = Modifier.weight(1f),
-                            highlightColor = MaterialTheme.colorScheme.primary
-                        )
+            if (weeklyData.totalOvertimeEarned > BigDecimal.ZERO || weeklyData.totalNightDifferentialEarned > BigDecimal.ZERO) {
+                EarningsCompositionCard(
+                    baseEarned = weeklyData.totalEarned.subtract(weeklyData.totalOvertimeEarned).subtract(weeklyData.totalNightDifferentialEarned),
+                    overtimeEarned = weeklyData.totalOvertimeEarned,
+                    nightDifferentialEarned = weeklyData.totalNightDifferentialEarned,
+                    currencySymbol = currencySymbol
+                )
+            }
+        } else {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                AnalyticsKpiCard(
+                    title = "Aylık Kazanç",
+                    value = "$currencySymbol${currencyFormat.format(monthlyData.totalEarned)}",
+                    subtitle = "${monthlyData.totalShifts} vardiya",
+                    modifier = Modifier.weight(1f),
+                    highlightColor = MaterialTheme.colorScheme.primary
+                )
 
-                        AnalyticsKpiCard(
-                            title = "Çalışma Süresi",
-                            value = weeklyData.formattedTotalDuration,
-                            subtitle = "Ort. $currencySymbol${currencyFormat.format(weeklyData.averageHourlyRate)}/saat",
-                            modifier = Modifier.weight(1f)
-                        )
-                    }
+                AnalyticsKpiCard(
+                    title = "Çalışma Süresi",
+                    value = monthlyData.formattedTotalDuration,
+                    subtitle = "Ort. $currencySymbol${currencyFormat.format(monthlyData.averageHourlyRate)}/saat",
+                    modifier = Modifier.weight(1f)
+                )
+            }
 
-                    if (weeklyData.totalOvertimeEarned > BigDecimal.ZERO || weeklyData.totalNightDifferentialEarned > BigDecimal.ZERO) {
-                        EarningsCompositionCard(
-                            baseEarned = weeklyData.totalEarned.subtract(weeklyData.totalOvertimeEarned).subtract(weeklyData.totalNightDifferentialEarned),
-                            overtimeEarned = weeklyData.totalOvertimeEarned,
-                            nightDifferentialEarned = weeklyData.totalNightDifferentialEarned,
-                            currencySymbol = currencySymbol
-                        )
-                    }
-                } else {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        AnalyticsKpiCard(
-                            title = "Aylık Kazanç",
-                            value = "$currencySymbol${currencyFormat.format(monthlyData.totalEarned)}",
-                            subtitle = "${monthlyData.totalShifts} vardiya",
-                            modifier = Modifier.weight(1f),
-                            highlightColor = MaterialTheme.colorScheme.primary
-                        )
+            if (monthlyData.totalOvertimeEarned > BigDecimal.ZERO || monthlyData.totalNightDifferentialEarned > BigDecimal.ZERO) {
+                EarningsCompositionCard(
+                    baseEarned = monthlyData.totalEarned.subtract(monthlyData.totalOvertimeEarned).subtract(monthlyData.totalNightDifferentialEarned),
+                    overtimeEarned = monthlyData.totalOvertimeEarned,
+                    nightDifferentialEarned = monthlyData.totalNightDifferentialEarned,
+                    currencySymbol = currencySymbol
+                )
+            }
 
-                        AnalyticsKpiCard(
-                            title = "Çalışma Süresi",
-                            value = monthlyData.formattedTotalDuration,
-                            subtitle = "Ort. $currencySymbol${currencyFormat.format(monthlyData.averageHourlyRate)}/saat",
-                            modifier = Modifier.weight(1f)
-                        )
-                    }
-
-                    if (monthlyData.totalOvertimeEarned > BigDecimal.ZERO || monthlyData.totalNightDifferentialEarned > BigDecimal.ZERO) {
-                        EarningsCompositionCard(
-                            baseEarned = monthlyData.totalEarned.subtract(monthlyData.totalOvertimeEarned).subtract(monthlyData.totalNightDifferentialEarned),
-                            overtimeEarned = monthlyData.totalOvertimeEarned,
-                            nightDifferentialEarned = monthlyData.totalNightDifferentialEarned,
-                            currencySymbol = currencySymbol
-                        )
-                    }
-
-                    if (monthlyData.totalBreakDeductionMs > 0L) {
-                        Card(
-                            shape = RoundedCornerShape(16.dp),
-                            colors = CardDefaults.cardColors(
-                                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
-                            ),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(16.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = "Ücret Kesintili Toplam Mola:",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Text(
-                                    text = monthlyData.formattedBreakDeduction,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.error
-                                )
-                            }
-                        }
-                    }
-                }
-
-                // All-Time Summary Card
+            if (monthlyData.totalBreakDeductionMs > 0L) {
                 Card(
-                    shape = RoundedCornerShape(20.dp),
+                    shape = RoundedCornerShape(16.dp),
                     colors = CardDefaults.cardColors(
                         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
                     ),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Column(
-                        modifier = Modifier.padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "Tüm Zamanlar İstatistikleri",
-                            style = MaterialTheme.typography.titleMedium,
+                            text = "Ücret Kesintili Toplam Mola:",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = monthlyData.formattedBreakDeduction,
+                            style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-
-                        HorizontalDivider(
-                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
-                            modifier = Modifier.padding(vertical = 2.dp)
-                        )
-
-                        MetricSummaryRow(
-                            label = "Toplam Kayıtlı Vardiya",
-                            value = "${overallData.totalShifts} adet"
-                        )
-                        MetricSummaryRow(
-                            label = "Toplam Net Kazanç",
-                            value = "$currencySymbol${currencyFormat.format(overallData.totalEarned)}",
-                            isBold = true,
-                            highlightColor = MaterialTheme.colorScheme.primary
-                        )
-                        MetricSummaryRow(
-                            label = "Toplam Çalışılan Süre",
-                            value = overallData.formattedTotalDuration
-                        )
-                        MetricSummaryRow(
-                            label = "Vardiya Başına Ortalama",
-                            value = "$currencySymbol${currencyFormat.format(overallData.averageShiftEarned)}"
-                        )
-                        MetricSummaryRow(
-                            label = "Ortalama Saatlik Verim",
-                            value = "$currencySymbol${currencyFormat.format(overallData.averageHourlyRate)} / saat"
+                            color = MaterialTheme.colorScheme.error
                         )
                     }
                 }
-
-                Spacer(modifier = Modifier.height(16.dp))
             }
+        }
+    }
+}
+
+@Composable
+private fun AnalyticsAllTimeSection(
+    overallData: OverallAnalyticsSummary,
+    currencySymbol: String,
+    currencyFormat: DecimalFormat
+) {
+    Card(
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+        ),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Text(
+                text = "Tüm Zamanlar İstatistikleri",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+
+            HorizontalDivider(
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                modifier = Modifier.padding(vertical = 2.dp)
+            )
+
+            MetricSummaryRow(
+                label = "Toplam Kayıtlı Vardiya",
+                value = "${overallData.totalShifts} adet"
+            )
+            MetricSummaryRow(
+                label = "Toplam Net Kazanç",
+                value = "$currencySymbol${currencyFormat.format(overallData.totalEarned)}",
+                isBold = true,
+                highlightColor = MaterialTheme.colorScheme.primary
+            )
+            MetricSummaryRow(
+                label = "Toplam Çalışılan Süre",
+                value = overallData.formattedTotalDuration
+            )
+            MetricSummaryRow(
+                label = "Vardiya Başına Ortalama",
+                value = "$currencySymbol${currencyFormat.format(overallData.averageShiftEarned)}"
+            )
+            MetricSummaryRow(
+                label = "Ortalama Saatlik Verim",
+                value = "$currencySymbol${currencyFormat.format(overallData.averageHourlyRate)} / saat"
+            )
         }
     }
 }
