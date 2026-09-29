@@ -29,6 +29,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
@@ -58,8 +59,9 @@ import kotlin.math.sin
  * - Mathematical sinusoidal wave running along the circular track circumference: r(θ) = R + A * sin(n * θ - φ)
  * - Determinate progress arc smoothly advancing clockwise from 12 o'clock (-90°).
  * - Non-overlapping track and active progress segments: track only renders where progress has not reached.
+ * - Smooth circular arc track (düzgün circular arc) along the nominal centerline.
  * - Physical 4.dp gap (CircularIndicatorTrackGapSize) separating active progress head and guide track.
- * - Balanced 7.dp stroke width for both active and track, ensuring distinct wave lobes without occlusion.
+ * - Bold 10.dp active stroke width and 9.5.dp track stroke width, matching Material 3 Expressive visual weight.
  * - Dynamic, traveling wave animation (waveSpeed) running exclusively when shift is RUNNING.
  * - Zero CPU / idle battery consumption when PAUSED, FINISHED, or NOT_STARTED.
  * - Preserves all hero typography, labels, duration, percentage, and accessibility semantics.
@@ -116,14 +118,14 @@ fun CircularWavyProgressHero(
     // Track color: visible against surface, creating the expressive wavy guide ring
     val trackColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.85f)
 
-    // Amplitude: distinct, pronounced wave height per state
+    // Amplitude: distinct, pronounced, smooth wave height per state
     val waveAmplitudeDp = when {
-        isOvertimeActive -> 7.5.dp
-        shiftState == ShiftState.RUNNING -> 6.5.dp
-        isBreakActive -> 5.5.dp
-        shiftState == ShiftState.PAUSED -> 5.0.dp
-        shiftState == ShiftState.FINISHED -> 5.5.dp
-        else -> 5.5.dp
+        isOvertimeActive -> 7.0.dp
+        shiftState == ShiftState.RUNNING -> 6.0.dp
+        isBreakActive -> 5.0.dp
+        shiftState == ShiftState.PAUSED -> 4.5.dp
+        shiftState == ShiftState.FINISHED -> 5.0.dp
+        else -> 5.0.dp
     }
 
     BoxWithConstraints(
@@ -144,8 +146,8 @@ fun CircularWavyProgressHero(
             contentAlignment = Alignment.Center
         ) {
             Canvas(modifier = Modifier.fillMaxSize()) {
-                val strokeWidthPx = 7.dp.toPx()
-                val trackStrokeWidthPx = 7.dp.toPx()
+                val strokeWidthPx = 10.dp.toPx()
+                val trackStrokeWidthPx = 9.5.dp.toPx()
                 val waveAmplitudePx = waveAmplitudeDp.toPx()
                 val centerOffset = Offset(size.width / 2f, size.height / 2f)
 
@@ -167,56 +169,53 @@ fun CircularWavyProgressHero(
                 // Gap handling inspired by official AndroidX CircularIndicatorTrackGapSize (4.dp)
                 // Angular spacing accounts for 4.dp physical air gap plus round stroke caps
                 val gapSizePx = 4.dp.toPx()
-                val fullGapAngleRad = (gapSizePx + strokeWidthPx) / baseRadius.toDouble()
+                val capWidthPx = (strokeWidthPx / 2f) + (trackStrokeWidthPx / 2f)
+                val fullGapAngleRad = ((gapSizePx + capWidthPx) / baseRadius).toDouble()
                 val headGapAngleRad = fullGapAngleRad.coerceAtMost(progressSweepRad)
                 val tailGapAngleRad = fullGapAngleRad.coerceAtMost(progressSweepRad)
 
-                // 1. Draw the non-overlapping track segment (only where progress has not reached)
+                // 1. Draw the non-overlapping smooth circular track (only where progress has not reached)
                 val trackStartAngleRad = startAngleRad + progressSweepRad + headGapAngleRad
                 val trackEndAngleRad = startAngleRad + fullCircleRad - tailGapAngleRad
                 val trackSweepRad = trackEndAngleRad - trackStartAngleRad
 
                 if (currentProgress < 0.995f && trackSweepRad > 0.02) {
-                    val isFullTrack = currentProgress < 0.005f
-                    val trackSteps = if (isFullTrack) 360 else max(8, ((trackSweepRad / fullCircleRad) * 360.0).roundToInt())
-                    val trackPath = Path()
-
-                    for (i in 0..trackSteps) {
-                        val fraction = i.toDouble() / trackSteps.toDouble()
-                        val angle = if (isFullTrack) {
-                            startAngleRad + fraction * fullCircleRad
-                        } else {
-                            trackStartAngleRad + fraction * trackSweepRad
-                        }
-                        val waveOffset = waveAmplitudePx * sin(waveFrequency * angle - phase)
-                        val r = baseRadius + waveOffset
-                        val x = (centerOffset.x + r * cos(angle)).toFloat()
-                        val y = (centerOffset.y + r * sin(angle)).toFloat()
-                        if (i == 0) {
-                            trackPath.moveTo(x, y)
-                        } else {
-                            trackPath.lineTo(x, y)
-                        }
-                    }
-
-                    if (isFullTrack) {
-                        trackPath.close()
-                    }
-
-                    drawPath(
-                        path = trackPath,
-                        color = trackColor,
-                        style = Stroke(
-                            width = trackStrokeWidthPx,
-                            cap = StrokeCap.Round,
-                            join = StrokeJoin.Round
+                    if (currentProgress < 0.005f) {
+                        // Full circle smooth track when no progress
+                        drawCircle(
+                            color = trackColor,
+                            radius = baseRadius,
+                            center = centerOffset,
+                            style = Stroke(
+                                width = trackStrokeWidthPx,
+                                cap = StrokeCap.Round
+                            )
                         )
-                    )
+                    } else {
+                        // Smooth circular arc with rounded caps matching nominal centerline
+                        val trackStartDeg = Math.toDegrees(trackStartAngleRad).toFloat()
+                        val trackSweepDeg = Math.toDegrees(trackSweepRad).toFloat()
+                        val trackDiameter = baseRadius * 2f
+                        val trackTopLeft = Offset(centerOffset.x - baseRadius, centerOffset.y - baseRadius)
+
+                        drawArc(
+                            color = trackColor,
+                            startAngle = trackStartDeg,
+                            sweepAngle = trackSweepDeg,
+                            useCenter = false,
+                            topLeft = trackTopLeft,
+                            size = Size(trackDiameter, trackDiameter),
+                            style = Stroke(
+                                width = trackStrokeWidthPx,
+                                cap = StrokeCap.Round
+                            )
+                        )
+                    }
                 }
 
                 // 2. Draw the active determinate wavy progress arc
                 if (currentProgress > 0.005f) {
-                    val activeSteps = max(8, (currentProgress * 360.0).roundToInt())
+                    val activeSteps = max(24, (currentProgress * 720.0).roundToInt())
                     val activePath = Path()
 
                     for (i in 0..activeSteps) {
