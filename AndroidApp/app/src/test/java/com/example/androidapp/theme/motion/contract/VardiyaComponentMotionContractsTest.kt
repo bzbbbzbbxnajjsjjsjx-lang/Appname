@@ -5,6 +5,7 @@ import androidx.compose.animation.core.SpringSpec
 import androidx.compose.ui.unit.dp
 import com.example.androidapp.theme.DarkColorScheme
 import com.example.androidapp.theme.LightColorScheme
+import com.example.androidapp.theme.motion.HeroWaveMotionTokens
 import com.example.androidapp.theme.motion.MotionPreference
 import com.example.androidapp.theme.motion.VardiyaMotionScheme
 import com.example.androidapp.vardiya.domain.model.ShiftState
@@ -239,12 +240,12 @@ class VardiyaComponentMotionContractsTest {
     fun testHeroContract_cycleDurations() {
         val contract = DefaultVardiyaHeroMotionContract
 
-        assertEquals(2400L, contract.resolveWaveCycleDurationMs(HeroSemanticState.NOT_STARTED))
-        assertEquals(2400L, contract.resolveWaveCycleDurationMs(HeroSemanticState.RUNNING))
-        assertEquals(2400L, contract.resolveWaveCycleDurationMs(HeroSemanticState.PAUSED))
-        assertEquals(2400L, contract.resolveWaveCycleDurationMs(HeroSemanticState.BREAK))
-        assertEquals(1800L, contract.resolveWaveCycleDurationMs(HeroSemanticState.OVERTIME))
-        assertEquals(2400L, contract.resolveWaveCycleDurationMs(HeroSemanticState.FINISHED))
+        assertEquals(HeroWaveMotionTokens.CYCLE_DURATION_RUNNING_MS, contract.resolveWaveCycleDurationMs(HeroSemanticState.NOT_STARTED))
+        assertEquals(HeroWaveMotionTokens.CYCLE_DURATION_RUNNING_MS, contract.resolveWaveCycleDurationMs(HeroSemanticState.RUNNING))
+        assertEquals(HeroWaveMotionTokens.CYCLE_DURATION_RUNNING_MS, contract.resolveWaveCycleDurationMs(HeroSemanticState.PAUSED))
+        assertEquals(HeroWaveMotionTokens.CYCLE_DURATION_RUNNING_MS, contract.resolveWaveCycleDurationMs(HeroSemanticState.BREAK))
+        assertEquals(HeroWaveMotionTokens.CYCLE_DURATION_OVERTIME_MS, contract.resolveWaveCycleDurationMs(HeroSemanticState.OVERTIME))
+        assertEquals(HeroWaveMotionTokens.CYCLE_DURATION_RUNNING_MS, contract.resolveWaveCycleDurationMs(HeroSemanticState.FINISHED))
     }
 
     @Test

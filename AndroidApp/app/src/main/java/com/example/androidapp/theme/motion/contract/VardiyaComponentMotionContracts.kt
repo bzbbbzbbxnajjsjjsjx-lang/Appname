@@ -15,6 +15,7 @@ import androidx.compose.material3.ColorScheme
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.example.androidapp.theme.motion.HeroWaveMotionTokens
 import com.example.androidapp.theme.motion.MotionPreference
 import com.example.androidapp.theme.motion.VardiyaMotionScheme
 import com.example.androidapp.vardiya.domain.model.ShiftState
@@ -280,8 +281,8 @@ object DefaultVardiyaHeroMotionContract : VardiyaHeroMotionContract {
     val AMPLITUDE_OVERTIME = 7.0.dp
     val AMPLITUDE_FINISHED = 5.0.dp
 
-    const val CYCLE_DURATION_NORMAL_MS = 2400L
-    const val CYCLE_DURATION_OVERTIME_MS = 1800L
+    const val CYCLE_DURATION_NORMAL_MS = HeroWaveMotionTokens.CYCLE_DURATION_RUNNING_MS
+    const val CYCLE_DURATION_OVERTIME_MS = HeroWaveMotionTokens.CYCLE_DURATION_OVERTIME_MS
 
     override fun resolveSemanticState(
         shiftState: ShiftState,
@@ -319,7 +320,7 @@ object DefaultVardiyaHeroMotionContract : VardiyaHeroMotionContract {
     }
 
     override fun resolveWaveCycleDurationMs(semanticState: HeroSemanticState): Long =
-        if (semanticState == HeroSemanticState.OVERTIME) CYCLE_DURATION_OVERTIME_MS else CYCLE_DURATION_NORMAL_MS
+        HeroWaveMotionTokens.resolveCycleDurationMs(semanticState)
 
     override fun resolveHeroActiveColor(
         semanticState: HeroSemanticState,

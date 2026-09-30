@@ -57,6 +57,9 @@ import androidx.graphics.shapes.Morph
 import androidx.graphics.shapes.RoundedPolygon
 import androidx.graphics.shapes.circle
 import androidx.graphics.shapes.star
+import androidx.compose.ui.platform.LocalDensity
+import kotlin.math.hypot
+import com.example.androidapp.theme.motion.HeroWaveMotionTokens
 import com.example.androidapp.theme.motion.MotionPreference
 import com.example.androidapp.theme.motion.VardiyaTheme
 import com.example.androidapp.theme.motion.contract.DefaultVardiyaHeroMotionContract
@@ -196,6 +199,59 @@ object CircularWavyHeroGeometry {
             }
         }
         return result
+    }
+
+    /**
+     * Resolves the nominal base radius in Dp from the outer container size.
+     * Container margin accommodates outer wave peaks (maxAmplitude), stroke width, and safety gap.
+     * For 295.dp indicator: 147.5.dp - (11.dp + 5.dp + 4.dp) = 127.5.dp.
+     */
+    fun resolveBaseRadiusDp(indicatorSizeDp: Dp): Dp {
+        val outerPeakOffsetDp = MAX_AMPLITUDE + 5.dp + 4.dp // 11dp + 5dp + 4dp = 20dp
+        val halfSize = indicatorSizeDp / 2f
+        return if (halfSize > outerPeakOffsetDp) halfSize - outerPeakOffsetDp else 0.dp
+    }
+
+    /**
+     * Calculates the exact single-loop arc length in DP of the 12-lobed morphed wavy path
+     * for a given [baseRadiusDp] and [amplitudeDp].
+     * Uses deterministic numerical integration of the cubic Bézier curves (pure JVM compatible).
+     */
+    fun calculateActualWavyLoopLengthDp(
+        baseRadiusDp: Float,
+        amplitudeDp: Float,
+        maxAmplitudeDp: Float = MAX_AMPLITUDE.value,
+        samplesPerCubic: Int = 16
+    ): Float {
+        if (baseRadiusDp <= 0f) return 0f
+        val morphFactor = resolveMorphFactor(amplitudeDp.coerceAtLeast(0f).dp)
+        val circle = createCirclePolygon(radius = baseRadiusDp)
+        val star = createStarPolygon(baseRadius = baseRadiusDp, maxAmplitude = maxAmplitudeDp)
+        val morph = createHeroMorph(circle, star)
+        val cubics = morph.asCubics(morphFactor)
+        if (cubics.isEmpty()) return (2.0 * kotlin.math.PI * baseRadiusDp).toFloat()
+
+        var totalLength = 0f
+        for (cubic in cubics) {
+            var prevX = cubic.anchor0X
+            var prevY = cubic.anchor0Y
+            for (step in 1..samplesPerCubic) {
+                val t = step.toFloat() / samplesPerCubic.toFloat()
+                val oneMinusT = 1f - t
+                val x = oneMinusT * oneMinusT * oneMinusT * cubic.anchor0X +
+                    3f * oneMinusT * oneMinusT * t * cubic.control0X +
+                    3f * oneMinusT * t * t * cubic.control1X +
+                    t * t * t * cubic.anchor1X
+                val y = oneMinusT * oneMinusT * oneMinusT * cubic.anchor0Y +
+                    3f * oneMinusT * oneMinusT * t * cubic.control0Y +
+                    3f * oneMinusT * t * t * cubic.control1Y +
+                    t * t * t * cubic.anchor1Y
+                totalLength += hypot((x - prevX).toDouble(), (y - prevY).toDouble()).toFloat()
+                prevX = x
+                prevY = y
+            }
+        }
+        return totalLength
     }
 }
 
@@ -440,42 +496,21 @@ fun CircularWavyProgressHero(
         label = "hero_container_scale_anim"
     )
 
-    // Reset phase cleanly to 12 o'clock when shift resets to NOT_STARTED
-    LaunchedEffect(shiftState) {
-        if (shiftState == ShiftState.NOT_STARTED) {
+    // Reset phase cleanly to 12 o'clock when shift resets or enters calm resting state
+    LaunchedEffect(semanticState) {
+        if (semanticState == HeroSemanticState.NOT_STARTED ||
+            semanticState == HeroSemanticState.FINISHED ||
+            semanticState == HeroSemanticState.BREAK
+        ) {
             phaseAccumulator = 0f
         }
     }
 
-    val isWaveActive = contract.isWavePhaseActive(
-        semanticState = semanticState,
-        motionPreference = motionPreference
-    )
-
-    if (isWaveActive) {
-        val cycleDurationMs = contract.resolveWaveCycleDurationMs(semanticState)
-        LaunchedEffect(cycleDurationMs) {
-            val cycleDurationNanos = cycleDurationMs * 1_000_000L
-            val twoPi = (2.0 * PI).toFloat()
-            var lastFrameNanos = 0L
-            while (isActive) {
-                withFrameNanos { frameTimeNanos ->
-                    if (lastFrameNanos != 0L) {
-                        val deltaNanos = frameTimeNanos - lastFrameNanos
-                        val deltaPhase = (deltaNanos.toDouble() / cycleDurationNanos.toDouble() * twoPi).toFloat()
-                        phaseAccumulator = (phaseAccumulator + deltaPhase) % twoPi
-                    }
-                    lastFrameNanos = frameTimeNanos
-                }
-            }
-        }
-    }
+    // Reusable geometry cache to eliminate per-frame allocations during Canvas draw
+    val geometryHolder = remember { HeroGeometryHolder() }
 
     // Track color: visible against surface, creating the expressive wavy guide ring
     val trackColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.85f)
-
-    // Reusable geometry cache to eliminate per-frame allocations during Canvas draw
-    val geometryHolder = remember { HeroGeometryHolder() }
 
     BoxWithConstraints(
         modifier = modifier
@@ -487,6 +522,47 @@ fun CircularWavyProgressHero(
     ) {
         // Responsive size: prominent visual anchor fitting comfortably across screens
         val indicatorSize = min(min(maxWidth, maxHeight), 295.dp)
+
+        // Derive actual base radius in Dp for the active container size
+        val baseRadiusDp = CircularWavyHeroGeometry.resolveBaseRadiusDp(indicatorSize).value
+
+        // Calculate actual single-loop geometric path length directly from active amplitude
+        val actualPathLengthDp = remember(baseRadiusDp, animatedAmplitudeDp) {
+            CircularWavyHeroGeometry.calculateActualWavyLoopLengthDp(
+                baseRadiusDp = baseRadiusDp,
+                amplitudeDp = animatedAmplitudeDp.value
+            )
+        }
+
+        val isWaveActive = contract.isWavePhaseActive(
+            semanticState = semanticState,
+            motionPreference = motionPreference
+        )
+
+        if (isWaveActive) {
+            val phaseVelocity = HeroWaveMotionTokens.resolvePhaseVelocityRadPerSec(
+                semanticState = semanticState,
+                motionPreference = motionPreference,
+                pathLengthDp = actualPathLengthDp
+            )
+            LaunchedEffect(phaseVelocity) {
+                var lastFrameNanos = 0L
+                while (isActive) {
+                    withFrameNanos { frameTimeNanos ->
+                        if (lastFrameNanos != 0L) {
+                            val deltaNanos = frameTimeNanos - lastFrameNanos
+                            val deltaSeconds = (deltaNanos / 1_000_000_000.0).toFloat()
+                            phaseAccumulator = HeroWaveMotionTokens.advancePhase(
+                                currentPhase = phaseAccumulator,
+                                velocityRadPerSec = phaseVelocity,
+                                deltaSeconds = deltaSeconds
+                            )
+                        }
+                        lastFrameNanos = frameTimeNanos
+                    }
+                }
+            }
+        }
 
         Box(
             modifier = Modifier
@@ -580,11 +656,16 @@ fun CircularWavyProgressHero(
                     )
 
                     if (singleLoopLength > 0f) {
-                        val coercedWaveOffset = if (isWaveActive) {
-                            (phaseAccumulator / (2f * PI.toFloat())) % 1f
-                        } else {
+                        val effectivePhase = if (motionPreference == MotionPreference.REDUCED ||
+                            semanticState == HeroSemanticState.NOT_STARTED ||
+                            semanticState == HeroSemanticState.FINISHED ||
+                            semanticState == HeroSemanticState.BREAK
+                        ) {
                             0f
+                        } else {
+                            phaseAccumulator
                         }
+                        val coercedWaveOffset = (effectivePhase / (2f * PI.toFloat())) % 1f
                         val startStopShift = coercedWaveOffset * singleLoopLength
                         val pStart = startStopShift
                         val pStop = (currentProgress * singleLoopLength) + startStopShift

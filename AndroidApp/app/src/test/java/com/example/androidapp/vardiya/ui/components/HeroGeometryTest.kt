@@ -168,4 +168,30 @@ class HeroGeometryTest {
         val rotatedAngle = rawAngle - 75.0
         assertEquals("Rotated anchor 0 must align with 12 o'clock (-90°)", -90.0, rotatedAngle, 0.1)
     }
+
+    @Test
+    fun testMeasureActualPathLengths() {
+        val baseRadius = 127.5f
+        val circleCircumference = (2 * PI * baseRadius).toFloat()
+
+        val circleLength = CircularWavyHeroGeometry.calculateActualWavyLoopLengthDp(baseRadiusDp = baseRadius, amplitudeDp = 0f)
+        val runningLength = CircularWavyHeroGeometry.calculateActualWavyLoopLengthDp(baseRadiusDp = baseRadius, amplitudeDp = 6.0f)
+        val overtimeLength = CircularWavyHeroGeometry.calculateActualWavyLoopLengthDp(baseRadiusDp = baseRadius, amplitudeDp = 7.0f)
+
+        System.err.println("TRUE CIRCLE LENGTH: $circleLength")
+        System.err.println("TRUE RUNNING LENGTH: $runningLength")
+        System.err.println("TRUE OVERTIME LENGTH: $overtimeLength")
+
+        // Circle morph matches 2*PI*R to within 0.05dp
+        assertEquals("Circle morph length must match 2*PI*R", circleCircumference, circleLength, 0.05f)
+
+        // Wavy path length is strictly greater than circle baseline due to 12 wave undulations
+        assertTrue("RUNNING wavy loop length must exceed circle circumference", runningLength > circleLength)
+        assertTrue("OVERTIME wavy loop length must exceed RUNNING length", overtimeLength > runningLength)
+
+        // Exact bounds for 295dp Hero with R=127.5dp and MAX_AMPLITUDE=7dp
+        assertEquals(801.11f, circleLength, 0.1f)
+        assertEquals(821.44f, runningLength, 0.2f)
+        assertEquals(829.71f, overtimeLength, 0.2f)
+    }
 }
